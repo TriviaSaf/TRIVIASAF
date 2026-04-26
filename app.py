@@ -1,4 +1,5 @@
 import os
+import logging
 from flask import Flask, jsonify, render_template
 from dotenv import load_dotenv
 
@@ -13,6 +14,7 @@ from routes.sap import sap_bp
 from routes.admin import admin_bp
 
 app = Flask(__name__)
+app.logger.setLevel(logging.INFO)
 
 # ── Contexto global (disponível em todos os templates) ───────
 @app.context_processor
@@ -38,11 +40,11 @@ def login_page():
     return render_template('login.html')
 
 # Solicitante
-@app.route('/minhas-safs')
+@app.route('/minhassafs')
 def minhas_safs():
     return render_template('minhas_safs.html')
 
-@app.route('/nova-saf')
+@app.route('/novasaf')
 def nova_saf():
     return render_template('nova_saf.html')
 
@@ -56,7 +58,7 @@ def editar_saf(saf_id):
     return render_template('nova_saf.html')
 
 # CCM
-@app.route('/fila-ccm')
+@app.route('/filaccm')
 def fila_ccm():
     return render_template('fila_ccm.html')
 

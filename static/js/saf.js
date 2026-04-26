@@ -35,8 +35,8 @@ const Auth = (() => {
   function redirectIfLoggedIn() {
     const user = getUser();
     if (!user) return;
-    const dest = { SOLICITANTE: '/nova-saf', CCM: '/fila-ccm', ADMIN: '/admin' };
-    window.location.href = dest[user.perfil] || '/nova-saf';
+    const dest = { SOLICITANTE: '/novasaf', CCM: '/filaccm', ADMIN: '/admin' };
+    window.location.href = dest[user.perfil] || '/novasaf';
   }
 
   return { getUser, setUser, clearUser, requireAuth, redirectIfLoggedIn };
@@ -73,7 +73,7 @@ const API = (() => {
     login: (email, senha) => request('POST', '/auth/login', { email, senha }),
 
     // Solicitações
-    minhasSafs:   (uid)   => request('GET', `/solicitacoes/minhas-safs/${uid}`),
+    minhasSafs:   (uid)   => request('GET', `/solicitacoes/minhassafs/${uid}`),
     criarSaf:     (body)  => request('POST', '/solicitacoes/criar', body),
     buscarSaf:    (id)    => request('GET', `/solicitacoes/${id}`),
     editarSaf:    (id, b) => request('PUT', `/solicitacoes/${id}`, b),
@@ -87,7 +87,11 @@ const API = (() => {
     sincronizarSap: (id)        => request('POST', `/sap/sincronizar/${id}`),
 
     // Dados mestres
-    sugerir:      (q)    => request('GET', `/dados/sugerir?q=${encodeURIComponent(q)}`),
+    sugerir:      (q, lat, lng) => {
+      let url = `/dados/sugerir?q=${encodeURIComponent(q)}`;
+      if (lat != null && lng != null) url += `&lat=${lat}&lng=${lng}`;
+      return request('GET', url);
+    },
     locais:       ()     => request('GET', '/dados/locais'),
     equipamentos: (lid)  => request('GET', `/dados/equipamentos/${lid}`),
     sintomas:     (eid)  => request('GET', `/dados/sintomas/${eid}`),
@@ -113,6 +117,7 @@ const Fmt = (() => {
     DEVOLVIDA:   'Necessário Complemento',
     APROVADA:    'Confirmada',
     CANCELADA:   'Cancelada',
+    DUPLICADA:   'Duplicata',
   };
   const STATUS_CLASS = {
     ABERTA:      'badge-aberta',
@@ -120,6 +125,7 @@ const Fmt = (() => {
     DEVOLVIDA:   'badge-devolvida',
     APROVADA:    'badge-aprovada',
     CANCELADA:   'badge-cancelada',
+    DUPLICADA:   'badge-cancelada',
   };
   const PRIO_LABEL = { BAIXA: 'Baixa', MEDIA: 'Média', ALTA: 'Alta', CRITICA: 'Crítica' };
   const PRIO_CLASS = { BAIXA: 'badge-baixa', MEDIA: 'badge-media', ALTA: 'badge-alta', CRITICA: 'badge-critica' };
@@ -144,7 +150,8 @@ const Fmt = (() => {
   }
   function ticket(t) {
     if (!t) return '—';
-    return `<span class="ticket-num">SAF #${t}</span>`;
+    const num = String(t).padStart(6, '0');
+    return `<span class="ticket-num">SAF #${num}</span>`;
   }
   function initials(name) {
     if (!name) return '?';
@@ -252,7 +259,7 @@ function setupToolbar() {
 
   // SOLICITANTE: "Minhas SAFs" tab is in the sidebar, not the nav bar
   if (user.perfil === 'SOLICITANTE') {
-    document.querySelectorAll('.nav-tab[href="/minhas-safs"]').forEach(el => el.remove());
+    document.querySelectorAll('.nav-tab[href="/minhassafs"]').forEach(el => el.remove());
   }
 
   // Sidebar toggle
@@ -283,11 +290,11 @@ function _setupSidebar(user) {
   const path = window.location.pathname;
   const LINKS = {
     SOLICITANTE: [
-      { href: '/nova-saf',    label: 'Nova SAF',    icon: '&#43;' },
-      { href: '/minhas-safs', label: 'Minhas SAFs', icon: '&#128203;' },
+      { href: '/novasaf',    label: 'Nova SAF',    icon: '&#43;' },
+      { href: '/minhassafs', label: 'Minhas SAFs', icon: '&#128203;' },
     ],
     CCM: [
-      { href: '/fila-ccm', label: 'Fila CCM', icon: '&#128203;' },
+      { href: '/filaccm', label: 'Fila CCM', icon: '&#128203;' },
     ],
     ADMIN: [
       { href: '/admin', label: 'Administração', icon: '&#9881;' },
@@ -315,7 +322,7 @@ function _setupSidebar(user) {
   const devSelect = document.getElementById('dev-perfil-select');
   if (devSelect) {
     const DB_PERFIL = { SOLICITANTE: 'Solicitante', CCM: 'CCM', ADMIN: 'Administrador' };
-    const DEST      = { SOLICITANTE: '/nova-saf', CCM: '/fila-ccm', ADMIN: '/admin' };
+    const DEST      = { SOLICITANTE: '/novasaf', CCM: '/filaccm', ADMIN: '/admin' };
     devSelect.addEventListener('change', async function () {
       const appPerfil = this.value;
       if (!appPerfil) return;

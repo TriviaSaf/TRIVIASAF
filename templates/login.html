@@ -401,8 +401,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     Auth.setUser({ id: res.data.id, nome: res.data.nome, perfil: res.data.perfil,
                    empresa: res.data.empresa, area: res.data.area });
-    const dest = { SOLICITANTE: '/minhas-safs', CCM: '/fila-ccm', ADMIN: '/admin' };
-    window.location.href = dest[res.data.perfil] || '/minhas-safs';
+    const dest = { SOLICITANTE: '/minhassafs', CCM: '/filaccm', ADMIN: '/admin' };
+    window.location.href = dest[res.data.perfil] || '/minhassafs';
   });
 
   ['login-email', 'login-senha'].forEach(function (id) {

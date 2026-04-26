@@ -94,7 +94,7 @@ Acesse: `http://127.0.0.1:5000/`
 | Método | Rota | Descrição |
 |---|---|---|
 | POST | `/api/solicitacoes/criar` | Cria nova SAF |
-| GET | `/api/solicitacoes/minhas-safs/<usuario_id>` | Lista SAFs do solicitante |
+| GET | `/api/solicitacoes/minhassafs/<usuario_id>` | Lista SAFs do solicitante |
 
 ```json
 // POST /api/solicitacoes/criar
@@ -144,7 +144,7 @@ Acesse: `http://127.0.0.1:5000/`
 
 ### GET
 
-- /api/solicitacoes/minhas-safs/<usuario_id>
+- /api/solicitacoes/minhassafs/<usuario_id>
 - /api/ccm/pendentes
 - /api/dados/locais
 - /api/dados/equipamentos/<local_id>

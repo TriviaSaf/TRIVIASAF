@@ -3,8 +3,8 @@
 {% block title %}Minhas SAFs{% endblock %}
 
 {% block toolbar_nav %}
-<a href="/minhas-safs" class="nav-tab active">Minhas SAFs</a>
-<a href="/nova-saf"   class="nav-tab">Nova SAF</a>
+<a href="/minhassafs" class="nav-tab active">Minhas SAFs</a>
+<a href="/novasaf"   class="nav-tab">Nova SAF</a>
 {% endblock %}
 
 {% block content %}
@@ -15,7 +15,7 @@
       <p class="page-title" id="greeting">Minhas Solicitações</p>
       <p class="page-subtitle">Acompanhe o andamento de todas as suas solicitações de abertura de falha.</p>
     </div>
-    <a href="/nova-saf" class="btn btn-accent btn-lg">
+    <a href="/novasaf" class="btn btn-accent btn-lg">
       &#43; Nova SAF
     </a>
   </div>
@@ -56,6 +56,9 @@
     </button>
     <button class="filter-tab" data-filter="CANCELADA">
       Canceladas <span class="fcount" id="fc-cancelada">0</span>
+    </button>
+    <button class="filter-tab" data-filter="DUPLICADA">
+      Duplicatas <span class="fcount" id="fc-duplicada">0</span>
     </button>
   </div>
 
@@ -100,11 +103,14 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   // ── Counters ──────────────────────────────────────
   function getStatus(saf) {
-    return saf.saf_controle_ccm?.[0]?.status || saf.status || 'ABERTA';
+    const integ = saf.saf_integracao_sap || {};
+    // QMNUM com sucesso = aprovada (independente do status no banco)
+    if (integ.status_integracao === 'SUCESSO' && integ.qmnum) return 'APROVADA';
+    return saf.status || 'ABERTA';
   }
 
   function updateCounters() {
-    const counts = { ABERTA: 0, EM_ANALISE: 0, DEVOLVIDA: 0, APROVADA: 0, CANCELADA: 0 };
+    const counts = { ABERTA: 0, EM_ANALISE: 0, DEVOLVIDA: 0, APROVADA: 0, CANCELADA: 0, DUPLICADA: 0 };
     allSafs.forEach(s => { const st = getStatus(s); if (counts[st] !== undefined) counts[st]++; });
 
     document.getElementById('stat-total').textContent     = allSafs.length;
@@ -116,6 +122,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     document.getElementById('fc-devolvida').textContent   = counts.DEVOLVIDA;
     document.getElementById('fc-aprovada').textContent    = counts.APROVADA;
     document.getElementById('fc-cancelada').textContent   = counts.CANCELADA;
+    document.getElementById('fc-duplicada').textContent   = counts.DUPLICADA;
   }
 
   // ── Render table ──────────────────────────────────
@@ -137,23 +144,25 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     const rows = filtered.map(saf => {
-      const ctrl   = saf.saf_controle_ccm?.[0] || {};
-      const status = ctrl.status || 'ABERTA';
-      const sapId  = saf.sap_qmnum ? `<span class="font-mono" style="font-size:.8rem;">${saf.sap_qmnum}</span>` : '<span class="text-muted">—</span>';
+      const integ  = saf.saf_integracao_sap || {};
+      const status = getStatus(saf);
+      const qmnum  = integ.qmnum;
+      const sapId  = qmnum
+        ? `<span class="font-mono" style="font-size:.8rem;">${integ.tipo_nota || ''} ${qmnum}</span>`
+        : (saf.qmnum_duplicata
+          ? `<span class="font-mono" style="font-size:.8rem;color:#6b7280;">${saf.tipo_nota ? saf.tipo_nota + ' ' : ''}${saf.qmnum_duplicata}</span>`
+          : '<span class="text-muted">—</span>');
       const devAlert = status === 'DEVOLVIDA'
-        ? `<div style="font-size:.74rem;color:var(--purple);margin-top:2px;">⚠ ${(ctrl.motivo_devolucao||'').substring(0,50)}${ctrl.motivo_devolucao?.length > 50 ? '…' : ''}</div>`
+        ? `<div style="font-size:.74rem;color:var(--purple);margin-top:2px;">⚠ ${(saf.motivo_devolucao||'').substring(0,50)}${saf.motivo_devolucao?.length > 50 ? '…' : ''}</div>`
         : '';
       return `
         <tr class="clickable" onclick="window.location.href='/saf/${saf.id}'">
-          <td>${Fmt.ticket(saf.ticket_saf || saf.id?.substring(0,8))}</td>
+          <td>${Fmt.ticket(saf.ticket_saf)}</td>
           <td>${sapId}</td>
           <td>${Fmt.statusBadge(status)} ${devAlert}</td>
           <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${saf.titulo || saf.titulo_falha || '—'}</td>
           <td>${Fmt.prioBadge(saf.prioridade || 'MEDIA')}</td>
           <td class="text-muted text-sm">${Fmt.date(saf.criado_em)}</td>
-          <td>
-            <a href="/saf/${saf.id}" class="btn btn-ghost btn-sm">Ver</a>
-          </td>
         </tr>`;
     }).join('');
 
@@ -167,7 +176,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             <th>Descrição</th>
             <th>Prioridade</th>
             <th>Data</th>
-            <th></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

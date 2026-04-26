@@ -3,7 +3,7 @@
 {% block title %}Fila CCM{% endblock %}
 
 {% block toolbar_nav %}
-<a href="/fila-ccm" class="nav-tab active">Fila de Análise</a>
+<a href="/filaccm" class="nav-tab active">Fila de Análise</a>
 {% endblock %}
 
 {% block content %}
@@ -14,6 +14,7 @@
       <p class="page-title">Fila de Análise do CCM-E</p>
     </div>
     <button class="btn btn-outline" id="btn-refresh">&#8635; Atualizar</button>
+    <span id="last-sync" style="font-size:.75rem;color:var(--text-muted);align-self:center;"></span>
   </div>
 
   <!-- Filter tabs -->
@@ -21,6 +22,8 @@
     <button class="filter-tab active" data-filter="PENDENTES">Pendentes</button>
     <button class="filter-tab" data-filter="TODAS">Todas</button>
     <button class="filter-tab" data-filter="APROVADA">Aprovadas</button>
+    <button class="filter-tab" data-filter="DUPLICADA">Duplicatas</button>
+    <button class="filter-tab" data-filter="CANCELADA">Canceladas</button>
   </div>
 
   <!-- Equipment filter -->
@@ -108,8 +111,43 @@
   border: 1px solid var(--border);
   display: block;
   transition: opacity var(--trans);
+  cursor: zoom-in;
 }
 .ccm-photo-img:hover { opacity: .82; }
+
+/* Lightbox */
+.ccm-lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,.88);
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+.ccm-lightbox.open { display: flex; }
+.ccm-lightbox img {
+  max-width: min(92vw, 1200px);
+  max-height: 90dvh;
+  border-radius: var(--radius);
+  box-shadow: 0 8px 40px rgba(0,0,0,.6);
+  object-fit: contain;
+  cursor: default;
+}
+.ccm-lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1.25rem;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 2rem;
+  cursor: pointer;
+  line-height: 1;
+  opacity: .8;
+}
+.ccm-lightbox-close:hover { opacity: 1; }
 .ccm-photo-placeholder {
   width: 90px;
   height: 90px;
@@ -289,12 +327,13 @@
 
   // ───────── Stats ─────────
   function updateStats() {
-    const c = { ABERTA: 0, APROVADA: 0, DEVOLVIDA: 0 };
+    const c = { ABERTA: 0, APROVADA: 0, DEVOLVIDA: 0, CANCELADA: 0, DUPLICADA: 0 };
     allSafs.forEach(s => { if (c[s.status] !== undefined) c[s.status]++; });
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     set('s-pendentes',  c.ABERTA);
     set('s-aprovadas',  c.APROVADA);
     set('s-devolvidas', c.DEVOLVIDA);
+    set('s-canceladas', c.CANCELADA);
     set('s-total',      allSafs.length);
     set('ccm-subtitle',
       c.ABERTA > 0
@@ -305,16 +344,19 @@
   // ───────── Filter ─────────
   function getFiltered() {
     let items = allSafs;
-    if (activeFilter === 'PENDENTES') items = items.filter(s => s.status === 'ABERTA');
+    if (activeFilter === 'PENDENTES')  items = items.filter(s => s.status === 'ABERTA');
     else if (activeFilter === 'APROVADA')  items = items.filter(s => s.status === 'APROVADA');
-    if (activeEquip) items = items.filter(s => (s.saf_solicitacoes?.equipamento || '') === activeEquip);
+    else if (activeFilter === 'DUPLICADA') items = items.filter(s => s.status === 'DUPLICADA');
+    else if (activeFilter === 'CANCELADA') items = items.filter(s => s.status === 'CANCELADA');
+    // TODAS: mostra tudo
+    if (activeEquip) items = items.filter(s => (s.equipamento || '') === activeEquip);
     return items;
   }
 
   function populateEquipFilter() {
     const sel = document.getElementById('equip-filter');
     if (!sel) return;
-    const equips = [...new Set(allSafs.map(s => s.saf_solicitacoes?.equipamento || '').filter(Boolean))].sort();
+    const equips = [...new Set(allSafs.map(s => s.equipamento || '').filter(Boolean))].sort();
     sel.innerHTML = `<option value="">Todos os equipamentos</option>` +
       equips.map(e => `<option value="${e}">${e}</option>`).join('');
     if (equips.includes(activeEquip)) sel.value = activeEquip;
@@ -339,7 +381,7 @@
     // Group by equipment
     const groups = new Map();
     items.forEach(item => {
-      const key = (item.saf_solicitacoes && item.saf_solicitacoes.equipamento) || 'Sem Equipamento';
+      const key = item.equipamento || 'Sem Equipamento';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(item);
     });
@@ -371,11 +413,12 @@
   }
 
   function renderCard(item) {
-    const saf    = item.saf_solicitacoes || {};
-    const id     = item.solicitacao_id;
+    const saf    = item;
+    const integ  = item.saf_integracao_sap || {};
+    const id     = item.id;
     const status = item.status;
     const sapOk  = item.atualizado_sap;
-    const ticket = saf.ticket_saf ? `#${saf.ticket_saf}` : `#${id.substring(0, 6).toUpperCase()}`;
+    const ticket = saf.ticket_saf ? `#${String(saf.ticket_saf).padStart(6, '0')}` : `#${id.substring(0, 6).toUpperCase()}`;
 
     // SAP badge — clickable only for approved records
     const sapClickable = (status === 'APROVADA') ? ' clickable' : '';
@@ -387,6 +430,17 @@
     const sapBadge = sapOk
       ? `<span class="badge badge-sap-sim${sapClickable}" ${sapOnclick} title="${sapTitle}">&#10004; SAP</span>`
       : `<span class="badge badge-sap-nao${sapClickable}" ${sapOnclick} title="${sapTitle}">&#10006; SAP</span>`;
+
+    // QMNUM badge — aparece após aprovação
+    let qmnumBadge = '';
+    if (integ.qmnum && integ.status_integracao === 'SUCESSO') {
+      const tipoLabel = integ.tipo_nota || '';
+      qmnumBadge = `<span class="badge" style="background:#1e3a5f;color:#fff;font-family:monospace;letter-spacing:.04em;" title="Nota SAP criada com sucesso">${tipoLabel} ${integ.qmnum}</span>`;
+    } else if (integ.status_integracao === 'ERRO') {
+      qmnumBadge = `<span class="badge" style="background:#7f1d1d;color:#fff;" title="Erro na integração SAP: ${integ.mensagem_erro || ''}">&#9888; SAP ERRO</span>`;
+    } else if (status === 'APROVADA' && !integ.qmnum) {
+      qmnumBadge = `<span class="badge" style="background:#78350f;color:#fff;" title="Aguardando criação da nota no SAP">&#8987; SAP PENDENTE</span>`;
+    }
 
     // Meta info row
     const metaParts = [];
@@ -409,19 +463,26 @@
     let actionsHtml;
     if (status === 'ABERTA') {
       actionsHtml = `
-        <button class="btn btn-success btn-sm" onclick="window._ccmAceitar('${id}')">&#10003; Aceitar</button>
+        <button class="btn btn-success btn-sm" onclick="window._ccmMostrarAceite('${id}')">&#10003; Aceitar</button>
         <button class="btn btn-danger btn-sm" onclick="window._ccmRecusar('${id}')">&#10007; Recusar</button>`;
     } else if (status === 'APROVADA') {
       actionsHtml = `<span style="font-size:.8rem;color:var(--green);font-weight:600;">&#10004; Aprovada</span>`;
     } else if (status === 'DEVOLVIDA') {
       actionsHtml = `<span style="font-size:.8rem;color:var(--warning);font-weight:600;">&#8617; Devolvida</span>`;
+    } else if (status === 'CANCELADA') {
+      actionsHtml = `<span style="font-size:.8rem;color:var(--text-muted);font-weight:600;">&#10006; Cancelada</span>`;
+    } else if (status === 'DUPLICADA') {
+      const refNota = item.qmnum_duplicata ? ` — Nota ${item.qmnum_duplicata}` : '';
+      actionsHtml = `<span style="font-size:.8rem;color:#6b7280;font-weight:600;">&#9632; Duplicata${refNota}</span>`;
     } else {
       actionsHtml = Fmt.statusBadge(status);
     }
 
-    // Motivo devolução
+    // Motivo devolução / cancelamento
     const motivoHtml = (status === 'DEVOLVIDA' && item.motivo_devolucao)
       ? `<div class="ccm-motivo-box">&#8617; <em>Motivo:</em> ${item.motivo_devolucao}</div>`
+      : (status === 'CANCELADA' && item.motivo_cancelamento)
+      ? `<div class="ccm-motivo-box" style="color:#7f1d1d;background:#fff1f2;border-color:#f87171;">&#10006; <em>Cancelamento:</em> ${item.motivo_cancelamento}</div>`
       : '';
 
     return `
@@ -429,12 +490,12 @@
         <div class="ccm-card-meta">
           <span class="ccm-ticket">${ticket}</span>
           ${sapBadge}
+          ${qmnumBadge}
         </div>
         <div class="ccm-card-photo">
           ${saf.anexo_evidencia_url
-            ? `<a href="${saf.anexo_evidencia_url}" target="_blank" rel="noopener" title="Ver foto em tamanho original">
-                 <img src="${saf.anexo_evidencia_url}" class="ccm-photo-img" alt="Evidência" loading="lazy">
-               </a>`
+            ? `<img src="${saf.anexo_evidencia_url}" class="ccm-photo-img" alt="Evid\xeancia" loading="lazy"
+                 onclick="window._ccmOpenLightbox('${saf.anexo_evidencia_url}')" title="Ampliar foto">`
             : `<div class="ccm-photo-placeholder">&#128247;<br><span>Sem foto</span></div>`
           }
         </div>
@@ -452,22 +513,68 @@
   }
 
   // ───────── Actions ─────────
+  function mostrarAceite(id) {
+    const actDiv = document.getElementById('actions-' + id);
+    if (!actDiv) return;
+    // O CCM escolhe o tipo de nota conforme impacto operacional (YE ou YP)
+    actDiv.innerHTML = `
+      <div class="ccm-recusa-form">
+        <label style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:2px;">Tipo de Nota SAP</label>
+        <select id="tipo-nota-${id}" style="font-size:.82rem;padding:.25rem .5rem;
+                border:1.5px solid var(--primary);border-radius:var(--radius);
+                background:var(--bg);color:var(--text);cursor:pointer;">
+          <option value="YP" selected>YP – Corretiva Programada (sem impacto)</option>
+          <option value="YE">YE – Corretiva Emergencial (impacto operacional)</option>
+          <option value="YR">YR – Reparo (item para oficinas)</option>
+          <option value="YS">YS – Serviço Eventual</option>
+        </select>
+        <button class="btn btn-success btn-sm" onclick="window._ccmAceitar('${id}')">&#10003; Confirmar</button>
+        <button class="btn btn-ghost btn-sm" onclick="window._ccmRenderQueue()">Cancelar</button>
+      </div>`;
+  }
+
   async function aceitar(id) {
     const user = Auth.getUser();
+    const tipoNota = document.getElementById('tipo-nota-' + id)?.value || 'YP';
     const actDiv = document.getElementById('actions-' + id);
     if (actDiv) actDiv.innerHTML = `<div class="spinner" style="width:18px;height:18px;"></div>`;
 
-    const res = await API.avaliarSaf(id, { status: 'APROVADA', avaliador_id: user?.id });
+    const res = await API.avaliarSaf(id, { status: 'APROVADA', avaliador_id: user?.id, tipo_nota: tipoNota });
     if (!res.ok) {
       Toast.error(res.data.erro || 'Erro ao aceitar a SAF.');
       renderQueue();
       return;
     }
-    const item = allSafs.find(s => s.solicitacao_id === id);
-    if (item) item.status = 'APROVADA';
+    const item = allSafs.find(s => s.id === id);
+    if (item) {
+      item.status = 'APROVADA';
+      const qmnum = res.data.qmnum;
+      if (qmnum) {
+        item.saf_integracao_sap = { qmnum, tipo_nota: tipoNota, status_integracao: 'SUCESSO' };
+        const nDup = res.data.duplicatas || 0;
+        const dupMsg = nDup > 0 ? ` ${nDup} duplicata(s) encerrada(s).` : '';
+        Toast.success(`SAF aceita! Nota ${tipoNota} criada no SAP: ${qmnum}.${dupMsg}`);
+        // Atualiza duplicatas em memória (mesmo equip + mesmo sintoma)
+        if (nDup > 0) {
+          allSafs.forEach(s => {
+            if (s.id !== id && s.status === 'ABERTA' &&
+                s.equipamento_id === item.equipamento_id &&
+                s.sintoma_id     === item.sintoma_id) {
+              s.status = 'DUPLICADA';
+              s.qmnum_duplicata = qmnum;
+            }
+          });
+        }
+      } else if (res.data.aviso_sap) {
+        item.saf_integracao_sap = { status_integracao: 'ERRO', mensagem_erro: res.data.aviso_sap };
+        Toast.warning(`SAF aceita, mas erro no SAP: ${res.data.aviso_sap}`);
+      } else {
+        item.saf_integracao_sap = { status_integracao: 'PENDENTE' };
+        Toast.success(`SAF aceita! Nota ${tipoNota} enviada ao SAP.`);
+      }
+    }
     updateStats();
     renderQueue();
-    Toast.success('SAF aceita com sucesso!');
   }
 
   function mostrarRecusa(id) {
@@ -496,7 +603,7 @@
       Toast.error(res.data.erro || 'Erro ao recusar a SAF.');
       return;
     }
-    const item = allSafs.find(s => s.solicitacao_id === id);
+    const item = allSafs.find(s => s.id === id);
     if (item) { item.status = 'DEVOLVIDA'; item.motivo_devolucao = motivo; }
     updateStats();
     renderQueue();
@@ -515,7 +622,7 @@
       return;
     }
     // Remove o item da lista local (recusadas não aparecem na fila)
-    allSafs = allSafs.filter(s => s.solicitacao_id !== id);
+    allSafs = allSafs.filter(s => s.id !== id);
     updateStats();
     populateEquipFilter();
     renderQueue();
@@ -526,7 +633,7 @@
     const novoValor = !currentVal;
     const res = await API.toggleSap(id, novoValor);
     if (!res.ok) { Toast.error(res.data.erro || 'Erro ao atualizar SAP.'); return; }
-    const item = allSafs.find(s => s.solicitacao_id === id);
+    const item = allSafs.find(s => s.id === id);
     if (item) item.atualizado_sap = novoValor;
     renderQueue();
     Toast.success(novoValor ? 'SAP marcado como atualizado.' : 'Flag SAP removida.');
@@ -534,29 +641,58 @@
 
   // Expose for inline onclick handlers
   window._ccmAceitar       = aceitar;
-  window._ccmRecusar       = recusar;
+  window._ccmMostrarAceite  = mostrarAceite;
+  window._ccmRecusar        = recusar;
   window._ccmMostrarRecusa = mostrarRecusa; // compat
   window._ccmToggleSap     = toggleSap;
   window._ccmRenderQueue   = renderQueue;
 
+  // ───────── Lightbox ─────────
+  (function () {
+    const lb  = document.createElement('div');
+    lb.className = 'ccm-lightbox';
+    lb.innerHTML = '<button class="ccm-lightbox-close" aria-label="Fechar">&times;</button><img id="ccm-lb-img" src="" alt="Foto ampliada">';
+    document.body.appendChild(lb);
+
+    const img = lb.querySelector('#ccm-lb-img');
+    lb.querySelector('.ccm-lightbox-close').onclick = () => lb.classList.remove('open');
+    lb.addEventListener('click', e => { if (e.target === lb) lb.classList.remove('open'); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') lb.classList.remove('open'); });
+
+    window._ccmOpenLightbox = function (url) {
+      img.src = url;
+      lb.classList.add('open');
+    };
+  })();
+
   // ───────── Load ─────────
-  async function loadQueue() {
-    document.getElementById('ccm-queue').innerHTML =
-      '<div class="spinner-center"><div class="spinner"></div></div>';
+  async function loadQueue(silent = false) {
+    if (!silent) {
+      document.getElementById('ccm-queue').innerHTML =
+        '<div class="spinner-center"><div class="spinner"></div></div>';
+    }
     const res = await API.filaCCM();
     if (!res.ok) {
-      document.getElementById('ccm-queue').innerHTML = `
-        <div class="empty-state">
-          <div class="empty-state-icon">&#9888;&#65039;</div>
-          <p class="empty-state-title">Erro ao carregar fila</p>
-          <p class="empty-state-text">${res.data.erro || 'Tente novamente.'}</p>
-        </div>`;
+      if (!silent) {
+        document.getElementById('ccm-queue').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">&#9888;&#65039;</div>
+            <p class="empty-state-title">Erro ao carregar fila</p>
+            <p class="empty-state-text">${res.data.erro || 'Tente novamente.'}</p>
+          </div>`;
+      }
       return;
     }
     allSafs = res.data || [];
     updateStats();
     populateEquipFilter();
     renderQueue();
+    // Atualiza indicador de última sincronização
+    const el = document.getElementById('last-sync');
+    if (el) {
+      const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      el.textContent = `Atualizado às ${now}`;
+    }
   }
 
   // ───────── Bootstrap ─────────
@@ -580,9 +716,14 @@
       renderQueue();
     });
 
-    document.getElementById('btn-refresh').addEventListener('click', loadQueue);
+    document.getElementById('btn-refresh').addEventListener('click', () => {
+      loadQueue(false);
+    });
 
-    loadQueue();
+    loadQueue(false);
+
+    // Polling silencioso a cada 30 segundos
+    setInterval(() => loadQueue(true), 30000);
   });
 })();
 </script>

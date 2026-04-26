@@ -3,8 +3,8 @@
 {% block title %}Detalhe da SAF{% endblock %}
 
 {% block toolbar_nav %}
-<a href="/minhas-safs" class="nav-tab active">Minhas SAFs</a>
-<a href="/nova-saf"   class="nav-tab">Nova SAF</a>
+<a href="/minhassafs" class="nav-tab active">Minhas SAFs</a>
+<a href="/novasaf"   class="nav-tab">Nova SAF</a>
 {% endblock %}
 
 {% block content %}
@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   // Extrai ID da URL: /saf/<id>
   const safId = window.location.pathname.split('/').pop();
-  if (!safId) { window.location.href = '/minhas-safs'; return; }
+  if (!safId) { window.location.href = '/minhassafs'; return; }
 
   const res = await API.buscarSaf(safId);
 
@@ -278,7 +278,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     Modal.close('modal-cancelar');
     if (r.ok) {
       Toast.success('SAF cancelada com sucesso.');
-      setTimeout(() => window.location.href = '/minhas-safs', 1500);
+      setTimeout(() => window.location.href = '/minhassafs', 1500);
     } else {
       Toast.error(r.data.erro || 'Erro ao cancelar. Tente novamente.');
     }

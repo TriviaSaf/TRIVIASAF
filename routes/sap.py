@@ -108,14 +108,14 @@ def criar_nota(saf_id):
         sb = _get_supabase()
 
         # 1. Verifica aprovação
-        ccm_res = sb.table('saf_controle_ccm') \
+        ccm_res = sb.table('saf_solicitacoes') \
             .select('status, tipo_nota') \
-            .eq('solicitacao_id', saf_id) \
+            .eq('id', saf_id) \
             .execute()
         if not ccm_res.data or ccm_res.data[0]['status'] != 'APROVADA':
             return jsonify({"erro": "SAF não está com status APROVADA."}), 400
 
-        tipo_nota = ccm_res.data[0].get('tipo_nota', 'M2')
+        tipo_nota = ccm_res.data[0].get('tipo_nota', 'YP')
 
         # 2. Verifica se nota já foi criada com sucesso
         integ_res = sb.table('saf_integracao_sap') \
@@ -230,13 +230,8 @@ def cancelar_nota(saf_id):
         }).eq('solicitacao_id', saf_id).execute()
 
         sb.table('saf_solicitacoes') \
-            .update({'status': 'Cancelada'}) \
-            .eq('id', saf_id) \
-            .execute()
-
-        sb.table('saf_controle_ccm') \
             .update({'status': 'CANCELADA', 'motivo_cancelamento': motivo}) \
-            .eq('solicitacao_id', saf_id) \
+            .eq('id', saf_id) \
             .execute()
 
         _log(sb, "CANCELAMENTO_NOTA_SAP_SUCESSO", {

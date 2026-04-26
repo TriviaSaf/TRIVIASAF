@@ -73,17 +73,27 @@ serve(async (_req) => {
     ) as { d?: { results?: Array<{ FunctionalLocation: string; FunctionalLocationName: string }> } };
 
     const locais = locaisData?.d?.results ?? [];
+    const codigosLocaisSAP = new Set<string>();
 
     for (const item of locais) {
-      const codigo   = item.FunctionalLocation;
+      const codigo    = item.FunctionalLocation;
       const descricao = item.FunctionalLocationName ?? "";
       if (!codigo) continue;
+      codigosLocaisSAP.add(codigo);
 
       await supabase.from("locais_instalacao").upsert(
-        { codigo, descricao, ativo: true, sincronizado_em: now },
-        { onConflict: "codigo" }
+        { id_sap: codigo, codigo, descricao, ativo: true, sincronizado_em: now },
+        { onConflict: "id_sap" }
       );
       locaisSync++;
+    }
+
+    // Desativa locais que não vieram mais do SAP
+    if (codigosLocaisSAP.size > 0) {
+      await supabase.from("locais_instalacao")
+        .update({ ativo: false })
+        .not("codigo", "in", `(${[...codigosLocaisSAP].map(c => `'${c}'`).join(",")})`)
+        .eq("ativo", true);
     }
 
     // ── 2. Equipamentos (EQUNR / IE03) ──────────────────────────
@@ -93,12 +103,14 @@ serve(async (_req) => {
     ) as { d?: { results?: Array<{ Equipment: string; EquipmentName: string; FunctionalLocation: string }> } };
 
     const equipamentos = equipData?.d?.results ?? [];
+    const codigosEquipSAP = new Set<string>();
 
     for (const item of equipamentos) {
       const codigo    = item.Equipment;
       const descricao = item.EquipmentName ?? "";
       const tplnr     = item.FunctionalLocation;
       if (!codigo) continue;
+      codigosEquipSAP.add(codigo);
 
       // Busca ID do local no cache
       let localId: number | null = null;
@@ -112,20 +124,69 @@ serve(async (_req) => {
       }
 
       await supabase.from("equipamentos").upsert(
-        { codigo, descricao, local_instalacao_id: localId, ativo: true, sincronizado_em: now },
-        { onConflict: "codigo" }
+        { id_sap: codigo, codigo, descricao, local_instalacao_id: localId, ativo: true, sincronizado_em: now },
+        { onConflict: "id_sap" }
       );
       equipSync++;
     }
 
-    // ── 3. Registra log de auditoria ─────────────────────────────
+    // Desativa equipamentos que não vieram mais do SAP
+    if (codigosEquipSAP.size > 0) {
+      await supabase.from("equipamentos")
+        .update({ ativo: false })
+        .not("codigo", "in", `(${[...codigosEquipSAP].map(c => `'${c}'`).join(",")})`)
+        .eq("ativo", true);
+    }
+
+    // ── 3. Sintomas / Catálogo Tipo C (QMGRP + QMCOD) ───────────
+    const sintEndpoint = Deno.env.get("SAP_ENDPOINT_SINTOMAS") ??
+      SAP_BASE_URL +
+      "/sap/opu/odata/sap/API_MAINTNOTIFICATION/MaintNotifCatalog" +
+      "?$filter=CatalogType%20eq%20%27C%27" +
+      "&$select=CodeGroup,Code,CodeGroupDescription&$format=json";
+
+    const sintData = await fetch(sintEndpoint, { headers: sapHeaders() });
+    let sintSync = 0;
+
+    if (sintData.ok) {
+      const sintJson = await sintData.json() as {
+        d?: { results?: Array<{ CodeGroup: string; Code: string; CodeGroupDescription: string }> }
+      };
+      const sintomas = sintJson?.d?.results ?? [];
+      const codigosSintSAP = new Set<string>();
+
+      for (const item of sintomas) {
+        const grupo      = item.CodeGroup ?? "";
+        const codigoItem = item.Code ?? "";
+        const descricao  = item.CodeGroupDescription ?? "";
+        if (!grupo || !codigoItem) continue;
+        const codigo = `${grupo}-${codigoItem}`;
+        codigosSintSAP.add(codigo);
+
+        await supabase.from("sintomas_catalogo").upsert(
+          { id_sap: codigo, codigo, grupo, codigo_item: codigoItem, descricao, tipo_catalogo: "C", ativo: true, sincronizado_em: now },
+          { onConflict: "id_sap" }
+        );
+        sintSync++;
+      }
+
+      // Desativa sintomas que não vieram mais do SAP
+      if (codigosSintSAP.size > 0) {
+        await supabase.from("sintomas_catalogo")
+          .update({ ativo: false })
+          .not("codigo", "in", `(${[...codigosSintSAP].map(c => `'${c}'`).join(",")})`)
+          .eq("ativo", true);
+      }
+    }
+
+    // ── 4. Registra log de auditoria ─────────────────────────────
     await supabase.from("logs_auditoria").insert({
       evento: "SYNC_MESTRES_SAP",
-      payload: { locais: locaisSync, equipamentos: equipSync, em: now },
+      payload: { locais: locaisSync, equipamentos: equipSync, sintomas: sintSync, em: now },
     });
 
     return new Response(
-      JSON.stringify({ locais: locaisSync, equipamentos: equipSync }),
+      JSON.stringify({ locais: locaisSync, equipamentos: equipSync, sintomas: sintSync }),
       { headers: { "Content-Type": "application/json" } }
     );
 

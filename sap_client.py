@@ -11,9 +11,25 @@ Configurado via variáveis de ambiente (.env):
 import os
 import base64
 import logging
+import random
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────
+# Modo Mock (SAP_MOCK_MODE=true) — para testes sem SAP real
+# ──────────────────────────────────────────────────────────────
+
+def _is_mock() -> bool:
+    """Retorna True se SAP_MOCK_MODE=true no .env (qualquer capitalização)."""
+    return os.environ.get("SAP_MOCK_MODE", "false").strip().lower() in ("true", "1", "yes")
+
+
+def _mock_qmnum() -> str:
+    """Gera um número de nota SAP fictício (12 dígitos, começa com 1)."""
+    return f"1{random.randint(10 ** 10, 10 ** 11 - 1)}"
+
 
 # ──────────────────────────────────────────────────────────────
 # Helpers internos
@@ -67,10 +83,18 @@ def sap_criar_nota(saf: dict) -> dict:
     """
     Cria Nota de Manutenção no SAP a partir dos dados de uma SAF.
 
-    Parâmetros esperados em `saf` (colunas de saf_solicitacoes):
-      tipo_nota, titulo_falha, local_instalacao, equipamento,
-      prioridade, data_inicio_avaria, hora_inicio_avaria,
-      notificador_nome, descricao_longa
+    Parâmetros esperados em `saf` (colunas de saf_solicitacoes + lookup de códigos SAP):
+      tipo_nota            – QMART (YE=Corretiva Emergencial / YP=Corretiva Programada), default YP
+      titulo_falha         – texto curto, max 40 chars (QMTXT)
+      tplnr                – código técnico do Local de Instalação (TPLNR)
+      equnr                – código técnico do Equipamento (EQUNR)
+      qmgrp                – grupo do sintoma (QMGRP), opcional
+      qmcod                – código do sintoma (QMCOD), opcional
+      prioridade           – "CRITICA"|"ALTA"|"MEDIA"|"BAIXA"
+      data_inicio_avaria   – date string YYYY-MM-DD (AUSVN / STRMN)
+      hora_inicio_avaria   – time string HH:MM:SS  (AUZTV / STRUR)
+      notificador_nome     – nome do usuário (QMNAM)
+      descricao_longa      – texto livre (LongText)
 
     Retorna dict com chaves:
       qmnum  – número da nota criada (QMNUM)
@@ -85,25 +109,40 @@ def sap_criar_nota(saf: dict) -> dict:
         str(saf.get("prioridade", "MEDIA")).upper(), "3"
     )
 
-    # Formata data/hora como strings aceitas pelo SAP OData
+    # Códigos técnicos SAP — devem ser resolvidos antes de chamar esta função
+    tplnr = (saf.get("tplnr") or saf.get("local_instalacao") or "").strip()
+    equnr = (saf.get("equnr") or saf.get("equipamento") or "").strip()
+
+    # Formata data/hora no formato SAP OData (/Date(ms)/ ou YYYY-MM-DD)
     data_avaria = str(saf.get("data_inicio_avaria") or "")
     hora_avaria = str(saf.get("hora_inicio_avaria") or "")
 
     payload = {
-        "NotificationType":     saf.get("tipo_nota", "M2"),
-        "MaintNotifBrfTxt":     (saf.get("titulo_falha") or "")[:40],
-        "FunctionalLocation":   saf.get("local_instalacao", ""),
-        "Equipment":            saf.get("equipamento", ""),
-        "Priority":             prioridade_sap,
-        "MalfunctionStartDate": data_avaria,
-        "MalfunctionStartTime": hora_avaria,
-        "MalfunctionEndDate":   data_avaria,
-        "MalfunctionEndTime":   hora_avaria,
-        "RequiredStartDate":    data_avaria,   # STRMN
-        "RequiredStartTime":    hora_avaria,   # STRUR
-        "ReportedByUser":       (saf.get("notificador_nome") or saf.get("notificador_id") or ""),
+        "NotificationType":     saf.get("tipo_nota", "YP"),          # QMART
+        "MaintNotifBrfTxt":     (saf.get("titulo_falha") or "")[:40], # QMTXT
+        "FunctionalLocation":   tplnr,                                # TPLNR
+        "Equipment":            equnr,                                 # EQUNR
+        "Priority":             prioridade_sap,                        # PRIOK
+        "MalfunctionStartDate": data_avaria,                          # AUSVN
+        "MalfunctionStartTime": hora_avaria,                          # AUZTV
+        "RequiredStartDate":    data_avaria,                          # STRMN
+        "RequiredStartTime":    hora_avaria,                          # STRUR
+        "ReportedByUser":       (saf.get("notificador_nome") or "")[:12],  # QMNAM (max 12)
         "LongText":             saf.get("descricao_longa", ""),
     }
+
+    # Sintoma/Dano: adiciona apenas se ambos os campos estiverem preenchidos (QMGRP + QMCOD)
+    qmgrp = (saf.get("qmgrp") or "").strip()
+    qmcod = (saf.get("qmcod") or "").strip()
+    if qmgrp and qmcod:
+        payload["CatalogProfile"] = qmgrp   # QMGRP
+        payload["CodeGroup"]      = qmgrp
+        payload["Code"]           = qmcod   # QMCOD
+
+    if _is_mock():
+        qmnum_mock = _mock_qmnum()
+        logger.warning("[MOCK] sap_criar_nota — SAP real não chamado. QMNUM fictício: %s", qmnum_mock)
+        return {"qmnum": qmnum_mock, "raw": {"mock": True, "payload_enviado": payload}}
 
     logger.info("SAP criar_nota → %s | payload=%s", url, payload)
 
@@ -144,6 +183,10 @@ def sap_cancelar_nota(qmnum: str) -> dict:
         f"/sap/opu/odata/sap/API_MAINTNOTIFICATION/MaintenanceNotification('{qmnum}')/Cancel",
     )
 
+    if _is_mock():
+        logger.warning("[MOCK] sap_cancelar_nota — SAP real não chamado. qmnum=%s", qmnum)
+        return {"mock": True, "qmnum": qmnum, "status": "CANCL"}
+
     logger.info("SAP cancelar_nota → %s | qmnum=%s", url, qmnum)
 
     resp = requests.post(
@@ -169,6 +212,15 @@ def sap_consultar_nota(qmnum: str) -> dict:
         "SAP_ENDPOINT_CONSULTAR_NOTA",
         f"/sap/opu/odata/sap/API_MAINTNOTIFICATION/MaintenanceNotification('{qmnum}')?$format=json",
     )
+
+    if _is_mock():
+        logger.warning("[MOCK] sap_consultar_nota — SAP real não chamado. qmnum=%s", qmnum)
+        return {
+            "MaintenanceNotification": qmnum,
+            "MaintNotifProcessingPhase": "NOPR",  # Em processamento
+            "OrderID": "",
+            "mock": True,
+        }
 
     resp = requests.get(
         url,

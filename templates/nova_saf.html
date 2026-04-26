@@ -3,8 +3,8 @@
 {% block title %}Reportar Falha{% endblock %}
 
 {% block toolbar_nav %}
-<a href="/minhas-safs" class="nav-tab">Minhas SAFs</a>
-<a href="/nova-saf"   class="nav-tab active">Nova SAF</a>
+<a href="/minhassafs" class="nav-tab">Minhas SAFs</a>
+<a href="/novasaf"   class="nav-tab active">Nova SAF</a>
 {% endblock %}
 
 {% block content %}
@@ -16,17 +16,19 @@
     </div>
   </div>
 
-  <form id="form-nova-saf" novalidate>
+  <form id="form-novasaf" novalidate>
 
     <!-- Campos t&eacute;cnicos ocultos — preenchidos automaticamente pela sele&ccedil;&atilde;o -->
-    <input type="hidden" id="local_instalacao_id" name="local_instalacao_id">
-    <input type="hidden" id="equipamento_id"      name="equipamento_id">
-    <input type="hidden" id="sintoma_id"           name="sintoma_id">
-    <input type="hidden" id="titulo_falha"         name="titulo_falha">
-    <input type="hidden" id="prioridade"           name="prioridade" value="">
-    <input type="hidden" id="foto_lat"             name="foto_lat">
-    <input type="hidden" id="foto_lng"             name="foto_lng">
-    <input type="hidden" id="foto_acc"             name="foto_acc">
+    <input type="hidden" id="local_instalacao_id"   name="local_instalacao_id">
+    <input type="hidden" id="local_instalacao_nome" name="local_instalacao_nome">
+    <input type="hidden" id="equipamento_id"        name="equipamento_id">
+    <input type="hidden" id="equipamento_nome"      name="equipamento_nome">
+    <input type="hidden" id="sintoma_id"            name="sintoma_id">
+    <input type="hidden" id="titulo_falha"          name="titulo_falha">
+    <input type="hidden" id="prioridade"            name="prioridade" value="">
+    <input type="hidden" id="foto_lat"              name="foto_lat">
+    <input type="hidden" id="foto_lng"              name="foto_lng">
+    <input type="hidden" id="foto_acc"              name="foto_acc">
 
     <!-- ① O QUE ESTÁ ACONTECENDO? -->
     <div class="form-section">
@@ -36,12 +38,12 @@
 
       <div class="form-group">
         <textarea id="descricao_falha" name="descricao_falha"
-                  class="form-control" rows="3" required
+                  class="form-control" rows="3"
                   placeholder="Ex: A bomba de &aacute;gua do po&ccedil;o n&ordm; 2 parou de funcionar e est&aacute; fazendo ru&iacute;do desde ontem..."></textarea>
         <span class="form-hint" style="display:block;margin-top:.3rem;">
-          Mencione o local e o que observou. O sistema identificar&aacute; o equipamento automaticamente.
+          Mencione o local e o que observou. Se selecionar o sintoma abaixo, este campo &eacute; opcional.
         </span>
-        <span class="form-error">Campo obrigat&oacute;rio.</span>
+        <span class="form-error" id="desc-error" style="display:none;">Descreva o problema ou selecione um sintoma.</span>
       </div>
 
       <!-- Cards de sugest&atilde;o (aparecem ao digitar) -->
@@ -153,13 +155,96 @@
         <label class="form-label">
           Qual o impacto agora?&nbsp;<span class="required">*</span>
         </label>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.625rem;margin-top:.375rem;">
+        <!-- =====================================================
+             URGENCY BUTTONS — cores dos botões de impacto
+             Cada variante (.urgency-btn--BAIXA/MEDIA/ALTA/CRITICA)
+             define border-color e background em repouso.
+             O estado :selected (classe .selected adicionada via JS)
+             intensifica o fundo e a borda para feedback visual.
+             ===================================================== -->
+        <style>
+          .urgency-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: .625rem;
+            margin-top: .375rem;
+          }
+          @media (max-width: 450px) {
+            .urgency-grid { grid-template-columns: repeat(2, 1fr); }
+          }
 
-          <button type="button" class="urgency-btn" data-prio="MEDIA"
-                  style="border:2px solid var(--border);border-radius:var(--radius-lg);
-                         background:var(--surface);padding:.875rem .375rem;
-                         display:flex;flex-direction:column;align-items:center;gap:.375rem;
-                         cursor:pointer;text-align:center;transition:all .15s;">
+          /* Base comum — layout e transição */
+          .urgency-btn {
+            border-radius: var(--radius-lg);
+            padding: .875rem .375rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: .375rem;
+            cursor: pointer;
+            text-align: center;
+            transition: border-color .15s, background .15s, box-shadow .15s;
+          }
+
+          /* ── BAIXA — azul ── */
+          .urgency-btn--BAIXA {
+            border: 2px solid #bfdbfe;   /* blue-200 */
+            background: #eff6ff;         /* blue-50  */
+          }
+          .urgency-btn--BAIXA:hover,
+          .urgency-btn--BAIXA.selected {
+            border-color: #3b82f6;       /* blue-500 */
+            background: #dbeafe;         /* blue-100 */
+            box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+          }
+
+          /* ── MEDIA — amarelo ── */
+          .urgency-btn--MEDIA {
+            border: 2px solid #fde68a;   /* yellow-200 */
+            background: #fffbeb;         /* yellow-50  */
+          }
+          .urgency-btn--MEDIA:hover,
+          .urgency-btn--MEDIA.selected {
+            border-color: #f59e0b;       /* yellow-500 */
+            background: #fef3c7;         /* yellow-100 */
+            box-shadow: 0 0 0 3px rgba(245,158,11,.18);
+          }
+
+          /* ── ALTA — laranja ── */
+          .urgency-btn--ALTA {
+            border: 2px solid #fed7aa;   /* orange-200 */
+            background: #fff7ed;         /* orange-50  */
+          }
+          .urgency-btn--ALTA:hover,
+          .urgency-btn--ALTA.selected {
+            border-color: #f97316;       /* orange-500 */
+            background: #ffedd5;         /* orange-100 */
+            box-shadow: 0 0 0 3px rgba(249,115,22,.18);
+          }
+
+          /* ── CRITICA — vermelho ── */
+          .urgency-btn--CRITICA {
+            border: 2px solid #fecaca;   /* red-200 */
+            background: #fff1f2;         /* red-50   */
+          }
+          .urgency-btn--CRITICA:hover,
+          .urgency-btn--CRITICA.selected {
+            border-color: #ef4444;       /* red-500 */
+            background: #fee2e2;         /* red-100  */
+            box-shadow: 0 0 0 3px rgba(239,68,68,.18);
+          }
+        </style>
+        <div class="urgency-grid">
+
+          <button type="button" class="urgency-btn urgency-btn--BAIXA" data-prio="BAIXA">
+            <span style="font-size:1.5rem;line-height:1;">&#128309;</span>
+            <span style="font-weight:700;font-size:.82rem;color:var(--text);line-height:1.25;">
+              Funciona<br>normalmente
+            </span>
+            <span style="font-size:.7rem;color:var(--text-muted);">Melhoria / preventivo</span>
+          </button>
+
+          <button type="button" class="urgency-btn urgency-btn--MEDIA" data-prio="MEDIA">
             <span style="font-size:1.5rem;line-height:1;">&#9888;&#65039;</span>
             <span style="font-weight:700;font-size:.82rem;color:var(--text);line-height:1.25;">
               Funciona<br>com limite
@@ -167,11 +252,7 @@
             <span style="font-size:.7rem;color:var(--text-muted);">Pode aguardar</span>
           </button>
 
-          <button type="button" class="urgency-btn" data-prio="ALTA"
-                  style="border:2px solid var(--border);border-radius:var(--radius-lg);
-                         background:var(--surface);padding:.875rem .375rem;
-                         display:flex;flex-direction:column;align-items:center;gap:.375rem;
-                         cursor:pointer;text-align:center;transition:all .15s;">
+          <button type="button" class="urgency-btn urgency-btn--ALTA" data-prio="ALTA">
             <span style="font-size:1.5rem;line-height:1;">&#128310;</span>
             <span style="font-weight:700;font-size:.82rem;color:var(--text);line-height:1.25;">
               Afeta a<br>opera&ccedil;&atilde;o
@@ -179,11 +260,7 @@
             <span style="font-size:.7rem;color:var(--text-muted);">Aten&ccedil;&atilde;o necess&aacute;ria</span>
           </button>
 
-          <button type="button" class="urgency-btn" data-prio="CRITICA"
-                  style="border:2px solid var(--border);border-radius:var(--radius-lg);
-                         background:var(--surface);padding:.875rem .375rem;
-                         display:flex;flex-direction:column;align-items:center;gap:.375rem;
-                         cursor:pointer;text-align:center;transition:all .15s;">
+          <button type="button" class="urgency-btn urgency-btn--CRITICA" data-prio="CRITICA">
             <span style="font-size:1.5rem;line-height:1;">&#128680;</span>
             <span style="font-weight:700;font-size:.82rem;color:var(--text);line-height:1.25;">
               Parado ou<br>cr&iacute;tico
@@ -191,7 +268,7 @@
             <span style="font-size:.7rem;color:var(--text-muted);">Urgente!</span>
           </button>
 
-        </div>
+        </div><!-- /.urgency-grid -->
         <span class="form-error" id="prio-error" style="display:none;margin-top:.375rem;">
           Selecione o impacto atual.
         </span>
@@ -255,7 +332,7 @@
 
     <!-- SUBMIT -->
     <div style="display:flex;gap:.75rem;justify-content:flex-end;padding:1rem 0 .5rem;">
-      <a href="/minhas-safs" class="btn btn-outline">Cancelar</a>
+      <a href="/minhassafs" class="btn btn-outline">Cancelar</a>
       <button type="submit" id="btn-submit" class="btn btn-accent btn-lg" disabled>
         Enviar Solicita&ccedil;&atilde;o
       </button>
@@ -276,18 +353,19 @@
      style="display:none;position:fixed;inset:0;background:#000;
             z-index:9990;flex-direction:column;overflow:hidden;">
 
-  <!-- Live video area -->
-  <div style="position:relative;flex:1;">
+  <!-- Live video area — altura limitada para deixar espaço para os controles -->
+  <div style="position:relative;flex:1;min-height:0;overflow:hidden;">
     <video id="cam-video" autoplay playsinline muted
-           style="width:100%;height:100%;object-fit:cover;"></video>
+           style="width:100%;height:100%;object-fit:cover;
+                  max-height:calc(100dvh - 100px);"></video>
 
     <!-- Framing guide: box-shadow darkens area OUTSIDE the orange square -->
     <div id="cam-guide"
          style="position:absolute;
                 top:50%;left:50%;
                 transform:translate(-50%, -50%);
-                width:min(35vw, 52vh);
-                height:min(35vw, 52vh);
+                width:min(35vw, 42vh);
+                height:min(35vw, 42vh);
                 box-shadow:0 0 0 9999px rgba(0,0,0,0.58);
                 border-radius:5px;
                 pointer-events:none;">
@@ -315,9 +393,10 @@
     </div>
   </div>
 
-  <!-- Controls bar -->
-  <div style="background:#111;padding:1rem 2rem;display:flex;align-items:center;
-              justify-content:space-between;flex-shrink:0;">
+  <!-- Controls bar — sempre visível, altura fixa -->
+  <div style="background:#111;padding:.75rem 2rem;display:flex;align-items:center;
+              justify-content:space-between;flex-shrink:0;
+              min-height:90px;max-height:100px;">
 
     <!-- Close -->
     <button id="btn-close-cam" type="button"
@@ -328,10 +407,10 @@
 
     <!-- Capture (big circular shutter) -->
     <button id="btn-capture" type="button"
-            style="width:74px;height:74px;border-radius:50%;
+            style="width:70px;height:70px;border-radius:50%;
                    background:#fff;border:5px solid rgba(255,255,255,.35);
                    cursor:pointer;display:flex;align-items:center;justify-content:center;">
-      <div style="width:54px;height:54px;border-radius:50%;background:var(--accent);"></div>
+      <div style="width:50px;height:50px;border-radius:50%;background:var(--accent);"></div>
     </button>
 
     <!-- Spacer -->
@@ -357,6 +436,21 @@ document.addEventListener('DOMContentLoaded', async function () {
   document.getElementById('hora_inicio_avaria').value =
     `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
+  // ── GPS (captura silenciosa para busca por proximidade) ────────────
+  window._gpsPosition = null;
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        window._gpsPosition = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+      },
+      () => { /* GPS não disponível – pesquisa funciona sem ele */ },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 }
+    );
+  }
+
   // ── State ─────────────────────────────────────────
   window._capturedPhoto = null;
   let _camStream    = null;
@@ -367,17 +461,20 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   // ── Validation ────────────────────────────────────
   function checkFormValid() {
-    const hasDesc  = (document.getElementById('descricao_falha').value || '').trim().length >= 3;
-    const hasEquip = (document.getElementById('equipamento_id').value  || '') !== '';
-    const hasPrio  = prioHidden.value !== '';
-    const hasDate  = document.getElementById('data_inicio_avaria').value !== ''
-                  && document.getElementById('hora_inicio_avaria').value !== '';
-    const hasPhoto = !!window._capturedPhoto;
+    const hasSintoma = (document.getElementById('sintoma_id').value || '') !== '';
+    const hasDesc    = hasSintoma
+                     || (document.getElementById('descricao_falha').value || '').trim().length >= 3;
+    const hasEquip   = (document.getElementById('equipamento_id').value  || '') !== '';
+    const hasPrio    = prioHidden.value !== '';
+    const hasDate    = document.getElementById('data_inicio_avaria').value !== ''
+                    && document.getElementById('hora_inicio_avaria').value !== '';
+    const hasPhoto   = !!window._capturedPhoto;
     btnSubmit.disabled = !(hasDesc && hasEquip && hasPrio && hasDate && hasPhoto);
   }
 
   // ── Urgency buttons ───────────────────────────────
   const PRIO_STYLE = {
+    BAIXA:   { border: '#6b7280', bg: 'rgba(107,114,128,.09)' },
     MEDIA:   { border: '#E85C11', bg: 'rgba(232,92,17,.09)'  },
     ALTA:    { border: '#d97706', bg: 'rgba(217,119,6,.09)'  },
     CRITICA: { border: '#dc2626', bg: 'rgba(220,38,38,.09)'  },
@@ -453,9 +550,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   function selecionarSugestao(s) {
     _sugestaoSel = s;
-    document.getElementById('local_instalacao_id').value = s.local_id   || '';
-    document.getElementById('equipamento_id').value      = s.equip_id   || '';
-    document.getElementById('sintoma_id').value          = s.sintoma_id || '';
+    document.getElementById('local_instalacao_id').value   = s.local_id   || '';
+    document.getElementById('local_instalacao_nome').value = s.local_nome  || '';
+    document.getElementById('equipamento_id').value        = s.equip_id   || '';
+    document.getElementById('equipamento_nome').value      = s.equip_nome || s.sintoma_nome || '';
+    document.getElementById('sintoma_id').value            = s.sintoma_id || '';
 
     document.getElementById('sel-equip').textContent = s.equip_nome || s.sintoma_nome || '';
     document.getElementById('sel-local').textContent = s.local_nome ? `\uD83D\uDCCD ${s.local_nome}` : '';
@@ -473,9 +572,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   function limparSelecao() {
     _sugestaoSel = null;
-    document.getElementById('local_instalacao_id').value = '';
-    document.getElementById('equipamento_id').value      = '';
-    document.getElementById('sintoma_id').value          = '';
+    document.getElementById('local_instalacao_id').value   = '';
+    document.getElementById('local_instalacao_nome').value = '';
+    document.getElementById('equipamento_id').value        = '';
+    document.getElementById('equipamento_nome').value      = '';
+    document.getElementById('sintoma_id').value            = '';
     document.getElementById('selected-card').style.display = 'none';
     const list = document.getElementById('suggest-list');
     if (list.children.length) document.getElementById('suggest-area').style.display = 'block';
@@ -498,7 +599,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     document.getElementById('suggest-empty').style.display  = 'none';
     document.getElementById('suggest-area').style.display   = 'block';
     _suggestTimer = setTimeout(async () => {
-      const res = await API.sugerir(q);
+      const gps = window._gpsPosition;
+      const res = await API.sugerir(q, gps?.lat, gps?.lng);
       if (res.ok && res.data.sugestoes) {
         renderSugestoes(res.data.sugestoes);
       } else {
@@ -543,7 +645,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     _sugestaoSel      = null;
     document.getElementById('selected-card').style.display = 'none';
     document.getElementById('local_instalacao_id').value   = lid;
+    document.getElementById('local_instalacao_nome').value = lid ? this.options[this.selectedIndex].text : '';
     document.getElementById('equipamento_id').value        = '';
+    document.getElementById('equipamento_nome').value      = '';
     document.getElementById('sintoma_id').value            = '';
     if (!lid) { eqSel.innerHTML = '<option value="">Selecione o local primeiro</option>'; checkFormValid(); return; }
     const res = await API.equipamentos(lid);
@@ -562,7 +666,8 @@ document.addEventListener('DOMContentLoaded', async function () {
   document.getElementById('man-equip').addEventListener('change', async function () {
     const eid    = this.value;
     const sinSel = document.getElementById('man-sintoma');
-    document.getElementById('equipamento_id').value = eid;
+    document.getElementById('equipamento_id').value   = eid;
+    document.getElementById('equipamento_nome').value = eid ? this.options[this.selectedIndex].text : '';
     _sugestaoSel = null;
     document.getElementById('selected-card').style.display = 'none';
     sinSel.innerHTML = '<option value="">Carregando...</option>';
@@ -669,14 +774,20 @@ document.addEventListener('DOMContentLoaded', async function () {
   });
 
   // ── Submit ────────────────────────────────────────
-  document.getElementById('form-nova-saf').addEventListener('submit', async function (e) {
+  document.getElementById('form-novasaf').addEventListener('submit', async function (e) {
     e.preventDefault();
 
-    const descricao = (document.getElementById('descricao_falha').value || '').trim();
-    const equipId   = document.getElementById('equipamento_id').value;
-    const prio      = prioHidden.value;
+    const descricao  = (document.getElementById('descricao_falha').value || '').trim();
+    const equipId    = document.getElementById('equipamento_id').value;
+    const prio       = prioHidden.value;
+    const hasSintoma = (document.getElementById('sintoma_id').value || '') !== '';
 
-    if (!descricao) { Toast.warning('Descreva o problema antes de enviar.'); return; }
+    if (!descricao && !hasSintoma) {
+      document.getElementById('desc-error').style.display = 'block';
+      Toast.warning('Descreva o problema ou selecione um sintoma.');
+      return;
+    }
+    document.getElementById('desc-error').style.display = 'none';
     if (!equipId) {
       document.getElementById('equip-error').style.display = 'block';
       Toast.warning('Identifique o equipamento pela busca ou pelo seletor manual.');
@@ -700,26 +811,37 @@ document.addEventListener('DOMContentLoaded', async function () {
       titulo = parts.join(' \u2014 ').substring(0, 40);
     }
     if (!titulo) titulo = descricao.substring(0, 40);
+    // Fallback: use sintoma or equipamento name from manual selectors
+    if (!titulo) {
+      const sinSel   = document.getElementById('man-sintoma');
+      const equipSel = document.getElementById('man-equip');
+      const sinTxt   = sinSel?.options[sinSel?.selectedIndex]?.text  || '';
+      const eqTxt    = equipSel?.options[equipSel?.selectedIndex]?.text || '';
+      const parts    = [sinTxt, eqTxt].filter(s => s && s !== 'Selecione o equipamento' && s !== 'Selecione o local primeiro' && s !== 'Selecione o equipamento primeiro');
+      titulo = parts[0]?.substring(0, 40) || 'Falha reportada';
+    }
     document.getElementById('titulo_falha').value = titulo;
 
     setLoading(btnSubmit, true, 'Enviando...');
 
     const payload = {
-      notificador_id:     user.id,
-      notificador_nome:   user.nome  || '',
-      notificador_area:   user.area  || '',
-      titulo_falha:       titulo,
-      descricao_longa:    descricao,
-      local_instalacao:   document.getElementById('local_instalacao_id').value,
-      equipamento:        equipId,
-      sintoma_id:         document.getElementById('sintoma_id').value || null,
-      prioridade:         prio,
-      data_inicio_avaria: document.getElementById('data_inicio_avaria').value,
-      hora_inicio_avaria: document.getElementById('hora_inicio_avaria').value,
-      foto_base64:        window._capturedPhoto.dataUrl,
-      foto_lat:           document.getElementById('foto_lat').value || null,
-      foto_lng:           document.getElementById('foto_lng').value || null,
-      foto_acc:           document.getElementById('foto_acc').value || null,
+      notificador_id:       user.id,
+      notificador_nome:     user.nome  || '',
+      notificador_area:     user.area  || '',
+      titulo_falha:         titulo,
+      descricao_longa:      descricao,
+      local_instalacao_id:  document.getElementById('local_instalacao_id').value   || null,
+      local_instalacao:     document.getElementById('local_instalacao_nome').value || '',
+      equipamento_id:       equipId || null,
+      equipamento:          document.getElementById('equipamento_nome').value      || '',
+      sintoma_id:           document.getElementById('sintoma_id').value            || null,
+      prioridade:           prio,
+      data_inicio_avaria:   document.getElementById('data_inicio_avaria').value,
+      hora_inicio_avaria:   document.getElementById('hora_inicio_avaria').value,
+      foto_base64:          window._capturedPhoto.dataUrl,
+      foto_lat:             document.getElementById('foto_lat').value || null,
+      foto_lng:             document.getElementById('foto_lng').value || null,
+      foto_acc:             document.getElementById('foto_acc').value || null,
     };
 
     const res = await API.criarSaf(payload);
@@ -727,7 +849,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     if (res.ok) {
       Toast.success(`${res.data.ticket || 'SAF'} criada com sucesso! Aguarde an\xe1lise do CCM.`);
-      setTimeout(() => window.location.href = '/minhas-safs', 1800);
+      setTimeout(() => window.location.href = '/minhassafs', 1800);
     } else {
       Toast.error(res.data.erro || 'Erro ao criar SAF. Tente novamente.');
     }

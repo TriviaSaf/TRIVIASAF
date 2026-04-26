@@ -3,7 +3,7 @@
 {% block title %}Avaliar SAF{% endblock %}
 
 {% block toolbar_nav %}
-<a href="/fila-ccm" class="nav-tab">← Fila</a>
+<a href="/filaccm" class="nav-tab">← Fila</a>
 <a href="/avaliar-saf" class="nav-tab active">Avaliar SAF</a>
 {% endblock %}
 
@@ -15,7 +15,7 @@
       <p class="page-title" id="page-title">Triagem CCM</p>
       <p class="page-subtitle" id="page-sub">Carregando dados da solicitação...</p>
     </div>
-    <a href="/fila-ccm" class="btn btn-outline">← Voltar à Fila</a>
+    <a href="/filaccm" class="btn btn-outline">← Voltar à Fila</a>
   </div>
 
   <div id="loading-state" class="spinner-center"><div class="spinner"></div></div>
@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   if (!user) return;
 
   const safId = window.location.pathname.split('/').pop();
-  if (!safId) { window.location.href = '/fila-ccm'; return; }
+  if (!safId) { window.location.href = '/filaccm'; return; }
 
   // ── Carrega SAF ───────────────────────────────────
   const res = await API.buscarSaf(safId);
@@ -300,7 +300,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         setLoading(btn, false, 'Confirmar Decisão');
         if (r.ok) {
           Toast.success(`SAF marcada como "${Fmt.statusLabel(decisaoAtual)}" com sucesso.`);
-          setTimeout(() => window.location.href = '/fila-ccm', 1600);
+          setTimeout(() => window.location.href = '/filaccm', 1600);
         } else {
           Toast.error(r.data.erro || 'Erro ao salvar decisão.');
         }

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}SAF{% endblock %} – Sistema de Abertura de Falhas</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/saf.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<!-- ===================== TOOLBAR ===================== -->
+<header class="toolbar">
+  <!-- Row 1: White bar -->
+  <div class="toolbar-top">
+    <div class="toolbar-brand">
+      <button class="toolbar-menu-btn" aria-label="Menu">&#9776;</button>
+      <span class="toolbar-title">SAF &ndash; Sistema de Abertura de Falhas</span>
+    </div>
+    <div class="toolbar-user">
+      <span class="toolbar-user-name" id="toolbar-user-name"></span>
+      <div class="toolbar-user-badge" id="toolbar-user-badge">?</div>
+      <button class="btn-logout" id="btn-logout">Sair</button>
+      <img src="{{ url_for('static', filename='logo.png') }}" class="toolbar-logo" alt="Trivia SAF">
+    </div>
+  </div>
+  <!-- Row 2: Nav tabs (navy) -->
+  <nav class="toolbar-nav" id="toolbar-nav">
+    {% block toolbar_nav %}{% endblock %}
+  </nav>
+</header>
+
+<!-- ===================== CONTENT ===================== -->
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Global Confirm Modal -->
+<div class="modal-backdrop" id="global-confirm-modal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <span class="modal-title" id="global-confirm-title">Confirmar ação</span>
+      <button class="modal-close" data-dismiss-confirm aria-label="Fechar">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div id="global-confirm-message" style="font-size:.9rem;color:var(--text);"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" data-dismiss-confirm>Cancelar</button>
+      <button class="btn btn-primary" id="global-confirm-btn">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/saf.js') }}"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    setupToolbar();
+    {% block init_script %}{% endblock %}
+  });
+</script>
+{% block page_script %}{% endblock %}
+</body>
+</html>

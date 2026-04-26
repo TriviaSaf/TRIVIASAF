@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block title %}Avaliar SAF{% endblock %}
+
+{% block toolbar_nav %}
+<a href="/fila-ccm" class="nav-tab">← Fila</a>
+<a href="/avaliar-saf" class="nav-tab active">Avaliar SAF</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+
+  <div class="page-header">
+    <div>
+      <p class="page-title" id="page-title">Triagem CCM</p>
+      <p class="page-subtitle" id="page-sub">Carregando dados da solicitação...</p>
+    </div>
+    <a href="/fila-ccm" class="btn btn-outline">← Voltar à Fila</a>
+  </div>
+
+  <div id="loading-state" class="spinner-center"><div class="spinner"></div></div>
+  <div id="content-area" class="hidden">
+
+    <!-- Cabeçalho da SAF (resumo rápido) -->
+    <div class="card mb-4 accent-top">
+      <div class="card-body" style="padding:1rem 1.25rem;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;">
+          <div class="detail-field">
+            <span class="detail-label">Ticket SAF</span>
+            <span id="d-ticket" class="detail-value"></span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-label">Notificador</span>
+            <span id="d-notificador" class="detail-value">—</span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-label">Prioridade</span>
+            <span id="d-prioridade"></span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-label">Status Atual</span>
+            <span id="d-status"></span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-label">Data da Avaria</span>
+            <span id="d-data" class="detail-value">—</span>
+          </div>
+          <div class="detail-field">
+            <span class="detail-label">Local / Equip.</span>
+            <span id="d-local-equip" class="detail-value">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Descrição da falha -->
+    <div class="card mb-4">
+      <div class="card-header"><span class="card-title">📋 Descrição da Falha</span></div>
+      <div class="card-body">
+        <p class="text-sm" style="font-weight:600;color:var(--primary);margin-bottom:.4rem;" id="d-titulo"></p>
+        <p style="white-space:pre-wrap;font-size:.875rem;color:var(--text);" id="d-descricao"></p>
+      </div>
+    </div>
+
+    <!-- Evidência fotográfica (se houver) -->
+    <div id="foto-card" class="card mb-4 hidden">
+      <div class="card-header">
+        <span class="card-title">📷 Evidência Fotográfica</span>
+        <span id="foto-gps" style="color:var(--green);font-size:.8rem;font-weight:600;"></span>
+      </div>
+      <div class="card-body">
+        <img id="foto-img" src="" alt="Evidência"
+             style="max-width:100%;max-height:400px;border-radius:var(--radius);object-fit:contain;">
+      </div>
+    </div>
+
+    <!-- ── PAINEL DE DECISÃO ── -->
+    <div class="card mb-4 primary-top">
+      <div class="card-header">
+        <span class="card-title">⚖️ Decisão do CCM</span>
+      </div>
+      <div class="card-body">
+
+        <!-- Alerta: SAF já avaliada -->
+        <div id="already-evaluated" class="alert alert-info hidden" style="margin-bottom:1rem;">
+          <span class="alert-icon">ℹ️</span>
+          <span>Esta SAF já foi avaliada. A decisão pode ser revisada.</span>
+        </div>
+
+        <!-- 3 botões de ação -->
+        <div class="action-panel mb-4">
+          <div class="action-card confirm" id="card-confirmar">
+            <span class="action-icon">✅</span>
+            <span class="action-label">Confirmar</span>
+            <small style="font-size:.74rem;color:inherit;opacity:.8;">Dispara criação no SAP</small>
+          </div>
+          <div class="action-card devolver" id="card-devolver">
+            <span class="action-icon">↩️</span>
+            <span class="action-label">Complemento</span>
+            <small style="font-size:.74rem;color:inherit;opacity:.8;">Devolve ao solicitante</small>
+          </div>
+          <div class="action-card cancel" id="card-cancelar">
+            <span class="action-icon">🚫</span>
+            <span class="action-label">Cancelar</span>
+            <small style="font-size:.74rem;color:inherit;opacity:.8;">Encerra por duplicidade/erro</small>
+          </div>
+        </div>
+
+        <!-- Campos condicionais -->
+        <div id="panel-motivo" class="hidden">
+
+          <!-- Motivo complemento -->
+          <div id="grupo-motivo-devolucao" class="form-group mb-3 hidden">
+            <label class="form-label" for="motivo_devolucao">
+              Motivo do Complemento <span class="required">*</span>
+            </label>
+            <textarea id="motivo_devolucao" class="form-control" rows="3"
+                      placeholder="Informe o que o solicitante deve complementar ou corrigir..."></textarea>
+            <span class="form-hint">Esta mensagem será exibida ao solicitante.</span>
+          </div>
+
+          <!-- Motivo cancelamento -->
+          <div id="grupo-motivo-cancelamento" class="form-group mb-3 hidden">
+            <label class="form-label" for="motivo_cancelamento">
+              Motivo do Cancelamento <span class="required">*</span>
+            </label>
+            <textarea id="motivo_cancelamento" class="form-control" rows="3"
+                      placeholder="Ex: Duplicidade com SAF #123, erro de preenchimento..."></textarea>
+          </div>
+
+          <div class="flex gap-2" style="justify-content:flex-end;margin-top:.5rem;">
+            <button class="btn btn-outline" id="btn-limpar-decisao">Limpar</button>
+            <button class="btn btn-primary" id="btn-confirmar-decisao">Confirmar Decisão</button>
+          </div>
+        </div>
+
+        <!-- Confirmar diretamente -->
+        <div id="panel-confirmar" class="hidden">
+          <div class="alert alert-success mb-3">
+            <span class="alert-icon">🚀</span>
+            <span>
+              Ao confirmar, o SAF enviará os dados ao SAP e retornará o <strong>Nº da Nota (QMNUM)</strong>
+              instantaneamente. Esta ação é irreversível.
+            </span>
+          </div>
+          <div class="flex gap-2" style="justify-content:flex-end;">
+            <button class="btn btn-outline" id="btn-cancelar-confirmar">Voltar</button>
+            <button class="btn btn-success btn-lg" id="btn-aprovar">✅ Confirmar e Enviar ao SAP</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Resultado SAP (após aprovação) -->
+    <div id="sap-result" class="card success-top hidden">
+      <div class="card-header"><span class="card-title">✅ Integração SAP Concluída</span></div>
+      <div class="sap-block" style="margin:1.25rem;">
+        <div class="detail-field">
+          <span class="detail-label">Nº Nota SAP (QMNUM)</span>
+          <span class="detail-value mono" id="res-qmnum">—</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Nº Ordem SAP (AUFNR)</span>
+          <span class="detail-value mono" id="res-aufnr">—</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content-area -->
+</div>
+{% endblock %}
+
+{% block page_script %}
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  const user = Auth.requireAuth(['CCM']);
+  if (!user) return;
+
+  const safId = window.location.pathname.split('/').pop();
+  if (!safId) { window.location.href = '/fila-ccm'; return; }
+
+  // ── Carrega SAF ───────────────────────────────────
+  const res = await API.buscarSaf(safId);
+  document.getElementById('loading-state').classList.add('hidden');
+
+  if (!res.ok) {
+    document.getElementById('content-area').innerHTML =
+      `<div class="alert alert-danger"><span class="alert-icon">⚠️</span><span>${res.data.erro || 'SAF não encontrada.'}</span></div>`;
+    document.getElementById('content-area').classList.remove('hidden');
+    return;
+  }
+
+  const saf    = res.data.solicitacao || res.data;
+  const ctrl   = saf.saf_controle_ccm?.[0] || saf.controle || {};
+  const status = ctrl.status || 'ABERTA';
+
+  // ── Preenche campos ───────────────────────────────
+  document.getElementById('page-title').textContent = saf.titulo || saf.titulo_falha || 'SAF';
+  document.getElementById('page-sub').innerHTML = Fmt.ticket(saf.ticket_saf) + ' &mdash; Aberta em ' + Fmt.date(saf.criado_em);
+  document.getElementById('d-ticket').innerHTML  = Fmt.ticket(saf.ticket_saf);
+  document.getElementById('d-prioridade').innerHTML = Fmt.prioBadge(saf.prioridade || 'MEDIA');
+  document.getElementById('d-status').innerHTML  = Fmt.statusBadge(status);
+  document.getElementById('d-notificador').textContent = saf.notificador?.nome || '—';
+  document.getElementById('d-data').textContent   = (saf.data_inicio_avaria || '—') + ' ' + (saf.hora_inicio_avaria || '');
+  document.getElementById('d-local-equip').textContent =
+    [saf.local_instalacao?.descricao || saf.local_instalacao, saf.equipamento?.descricao || saf.equipamento].filter(Boolean).join(' / ') || '—';
+  document.getElementById('d-titulo').textContent    = saf.titulo || saf.titulo_falha || '';
+  document.getElementById('d-descricao').textContent = saf.descricao_falha || saf.descricao_longa || '—';
+
+  // Foto
+  const fotoUrl = saf.url_foto || saf.anexo_evidencia_url;
+  if (fotoUrl) {
+    document.getElementById('foto-card').classList.remove('hidden');
+    document.getElementById('foto-img').src = fotoUrl;
+    if (saf.foto_lat && saf.foto_lng)
+      document.getElementById('foto-gps').textContent = `📍 Lat ${saf.foto_lat}, Lng ${saf.foto_lng}`;
+  }
+
+  // Já avaliada
+  if (!['ABERTA','EM_ANALISE'].includes(status)) {
+    document.getElementById('already-evaluated').classList.remove('hidden');
+  }
+
+  document.getElementById('content-area').classList.remove('hidden');
+
+  // ── Estado da decisão ─────────────────────────────
+  let decisaoAtual = null; // 'APROVADA' | 'DEVOLVIDA' | 'CANCELADA'
+
+  function resetPanels() {
+    ['panel-motivo','panel-confirmar'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    ['grupo-motivo-devolucao','grupo-motivo-cancelamento'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    document.querySelectorAll('.action-card').forEach(c => c.style.opacity = '1');
+    decisaoAtual = null;
+  }
+
+  // Confirmar
+  document.getElementById('card-confirmar').addEventListener('click', function () {
+    resetPanels();
+    decisaoAtual = 'APROVADA';
+    this.style.opacity = '1';
+    document.querySelectorAll('.action-card:not(#card-confirmar)').forEach(c => c.style.opacity = '.35');
+    document.getElementById('panel-confirmar').classList.remove('hidden');
+  });
+
+  // Devolver
+  document.getElementById('card-devolver').addEventListener('click', function () {
+    resetPanels();
+    decisaoAtual = 'DEVOLVIDA';
+    this.style.opacity = '1';
+    document.querySelectorAll('.action-card:not(#card-devolver)').forEach(c => c.style.opacity = '.35');
+    document.getElementById('panel-motivo').classList.remove('hidden');
+    document.getElementById('grupo-motivo-devolucao').classList.remove('hidden');
+  });
+
+  // Cancelar
+  document.getElementById('card-cancelar').addEventListener('click', function () {
+    resetPanels();
+    decisaoAtual = 'CANCELADA';
+    this.style.opacity = '1';
+    document.querySelectorAll('.action-card:not(#card-cancelar)').forEach(c => c.style.opacity = '.35');
+    document.getElementById('panel-motivo').classList.remove('hidden');
+    document.getElementById('grupo-motivo-cancelamento').classList.remove('hidden');
+  });
+
+  document.getElementById('btn-limpar-decisao').addEventListener('click', resetPanels);
+  document.getElementById('btn-cancelar-confirmar').addEventListener('click', resetPanels);
+
+  // ── Envio: Devolver / Cancelar ────────────────────
+  document.getElementById('btn-confirmar-decisao').addEventListener('click', function () {
+    if (!decisaoAtual) return;
+
+    let motivo = '';
+    if (decisaoAtual === 'DEVOLVIDA') {
+      motivo = document.getElementById('motivo_devolucao').value.trim();
+      if (!motivo) { Toast.warning('Informe o motivo do complemento.'); return; }
+    }
+    if (decisaoAtual === 'CANCELADA') {
+      motivo = document.getElementById('motivo_cancelamento').value.trim();
+      if (!motivo) { Toast.warning('Informe o motivo do cancelamento.'); return; }
+    }
+
+    const isCancel = decisaoAtual === 'CANCELADA';
+    ConfirmModal.show({
+      title:        isCancel ? 'Cancelar SAF' : 'Devolver para Complemento',
+      message:      isCancel
+        ? 'Tem certeza que deseja <strong>cancelar</strong> esta SAF? Esta ação não poderá ser desfeita.'
+        : 'Tem certeza que deseja <strong>devolver</strong> esta SAF para complemento pelo solicitante?',
+      confirmText:  isCancel ? 'Sim, Cancelar' : 'Sim, Devolver',
+      confirmClass: isCancel ? 'btn-danger' : 'btn-warning',
+      onConfirm: async () => {
+        const btn = document.getElementById('btn-confirmar-decisao');
+        setLoading(btn, true, 'Salvando...');
+        const r = await API.avaliarSaf(safId, {
+          status:              decisaoAtual,
+          motivo_devolucao:    decisaoAtual === 'DEVOLVIDA' ? motivo : undefined,
+          motivo_cancelamento: decisaoAtual === 'CANCELADA' ? motivo : undefined,
+          avaliador_id:        user.id,
+        });
+        setLoading(btn, false, 'Confirmar Decisão');
+        if (r.ok) {
+          Toast.success(`SAF marcada como "${Fmt.statusLabel(decisaoAtual)}" com sucesso.`);
+          setTimeout(() => window.location.href = '/fila-ccm', 1600);
+        } else {
+          Toast.error(r.data.erro || 'Erro ao salvar decisão.');
+        }
+      }
+    });
+  });
+
+  // ── Envio: Aprovar → SAP ──────────────────────────
+  document.getElementById('btn-aprovar').addEventListener('click', function () {
+    ConfirmModal.show({
+      title:        'Confirmar e Enviar ao SAP',
+      message:      'Ao confirmar, a SAF ser\xe1 <strong>aprovada e enviada ao SAP</strong>. Uma nota de manuten\xe7\xe3o ser\xe1 gerada automaticamente. Esta a\xe7\xe3o <strong>n\xe3o pode ser desfeita</strong>.',
+      confirmText:  'Sim, Enviar ao SAP',
+      confirmClass: 'btn-success',
+      onConfirm: async () => {
+        const btn = document.getElementById('btn-aprovar');
+        setLoading(btn, true, 'Enviando ao SAP...');
+
+    // 1. Atualiza status para APROVADA
+    const rAval = await API.avaliarSaf(safId, { status: 'APROVADA', avaliador_id: user.id });
+    if (!rAval.ok) {
+      setLoading(btn, false, '\u2705 Confirmar e Enviar ao SAP');
+      Toast.error(rAval.data.erro || 'Erro ao aprovar SAF.');
+      return;
+    }
+
+        // 2. Dispara integração SAP (transação atômica)
+        const rSap = await API.sincronizarSap(safId);
+        setLoading(btn, false, '\u2705 Confirmar e Enviar ao SAP');
+
+        if (rSap.ok) {
+          document.getElementById('res-qmnum').textContent = rSap.data.sap_nota || '\u2014';
+          document.getElementById('res-aufnr').textContent = rSap.data.sap_ordem || 'Pendente';
+          document.getElementById('sap-result').classList.remove('hidden');
+          document.getElementById('panel-confirmar').classList.add('hidden');
+          document.getElementById('d-status').innerHTML = Fmt.statusBadge('APROVADA');
+          Toast.success(`Nota SAP ${rSap.data.sap_nota} gerada com sucesso!`);
+        } else {
+          Toast.error(rSap.data.erro || 'Falha na integra\xe7\xe3o com o SAP. A SAF foi aprovada mas a nota n\xe3o foi gerada. Tente sincronizar novamente.');
+        }
+      }  // end onConfirm
+    });  // end ConfirmModal.show
+  });    // end addEventListener
+
+});
+</script>
+{% endblock %}

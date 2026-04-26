@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+
+{% block title %}Detalhe da SAF{% endblock %}
+
+{% block toolbar_nav %}
+<a href="/minhas-safs" class="nav-tab active">Minhas SAFs</a>
+<a href="/nova-saf"   class="nav-tab">Nova SAF</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+
+  <!-- Breadcrumb / back -->
+  <div class="page-header">
+    <div>
+      <p class="page-title" id="page-heading">Detalhes da Solicitação</p>
+      <p class="page-subtitle" id="page-sub">Carregando...</p>
+    </div>
+    <div class="flex gap-2" id="action-buttons" style="flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading-state" class="spinner-center"><div class="spinner"></div></div>
+  <div id="content-area" class="hidden">
+
+    <!-- Status timeline -->
+    <div class="card mb-4 primary-top">
+      <div class="card-header">
+        <span class="card-title">Status da Solicitação</span>
+        <span id="current-badge"></span>
+      </div>
+      <div class="card-body">
+        <ul class="timeline" id="timeline"></ul>
+      </div>
+    </div>
+
+    <!-- Alerta de devolução -->
+    <div id="devolucao-alert" class="alert alert-warning hidden">
+      <span class="alert-icon">↩️</span>
+      <div>
+        <strong>Complemento necessário:</strong>
+        <span id="devolucao-motivo"></span>
+      </div>
+    </div>
+
+    <!-- Dados SAP -->
+    <div id="sap-block" class="card mb-4 hidden">
+      <div class="card-header">
+        <span class="card-title">✅ Dados SAP – Nota Gerada</span>
+      </div>
+      <div class="sap-block" style="margin:1.25rem;">
+        <div class="detail-field">
+          <span class="detail-label">Nº Nota SAP (QMNUM)</span>
+          <span class="detail-value mono" id="sap-qmnum">—</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Nº Ordem SAP (AUFNR)</span>
+          <span class="detail-value mono" id="sap-aufnr">—</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Última Sincronização</span>
+          <span class="detail-value" id="sap-sync">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dados da SAF -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <span class="card-title">📋 Dados da Solicitação</span>
+        <span class="text-muted text-sm" id="criado-em"></span>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-field">
+          <span class="detail-label">Ticket SAF</span>
+          <span class="detail-value" id="d-ticket"></span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Prioridade</span>
+          <span id="d-prioridade"></span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Notificador</span>
+          <span class="detail-value" id="d-notificador">—</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Data da Avaria</span>
+          <span class="detail-value" id="d-data-avaria">—</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Hora da Avaria</span>
+          <span class="detail-value" id="d-hora-avaria">—</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Local de Instalação</span>
+          <span class="detail-value" id="d-local">—</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Equipamento</span>
+          <span class="detail-value" id="d-equipamento">—</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Sintoma / Dano</span>
+          <span class="detail-value" id="d-sintoma">—</span>
+        </div>
+        <div class="detail-field full">
+          <span class="detail-label">Descrição da Falha</span>
+          <span class="detail-value" id="d-descricao" style="white-space:pre-wrap;">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Evidência fotográfica -->
+    <div id="foto-card" class="card mb-4 hidden">
+      <div class="card-header">
+        <span class="card-title">📷 Evidência Fotográfica</span>
+        <span id="foto-gps" class="text-sm" style="color:var(--green);font-weight:600;"></span>
+      </div>
+      <div class="card-body">
+        <img id="foto-preview" src="" alt="Evidência"
+             style="max-width:100%;max-height:360px;border-radius:var(--radius);object-fit:contain;">
+      </div>
+    </div>
+
+  </div><!-- /content-area -->
+
+</div><!-- /page-wrapper -->
+
+<!-- Modal: Cancelar SAF -->
+<div class="modal-backdrop" id="modal-cancelar">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Cancelar Solicitação</span>
+      <button class="modal-close" onclick="Modal.close('modal-cancelar')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-warning mb-3">
+        <span class="alert-icon">⚠️</span>
+        <span>Esta ação não poderá ser desfeita. Informe o motivo do cancelamento.</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="motivo-cancelamento">
+          Motivo do Cancelamento <span class="required">*</span>
+        </label>
+        <textarea id="motivo-cancelamento" class="form-control" rows="3"
+                  placeholder="Descreva o motivo..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="Modal.close('modal-cancelar')">Voltar</button>
+      <button class="btn btn-danger" id="btn-confirm-cancelar">Confirmar Cancelamento</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block page_script %}
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  const user = Auth.requireAuth(['SOLICITANTE']);
+  if (!user) return;
+
+  // Extrai ID da URL: /saf/<id>
+  const safId = window.location.pathname.split('/').pop();
+  if (!safId) { window.location.href = '/minhas-safs'; return; }
+
+  const res = await API.buscarSaf(safId);
+
+  document.getElementById('loading-state').classList.add('hidden');
+
+  if (!res.ok) {
+    document.getElementById('content-area').innerHTML =
+      `<div class="alert alert-danger"><span class="alert-icon">⚠️</span>
+       <span>${res.data.erro || 'SAF não encontrada.'}</span></div>`;
+    document.getElementById('content-area').classList.remove('hidden');
+    return;
+  }
+
+  const saf  = res.data.solicitacao || res.data;
+  const ctrl = saf.saf_controle_ccm?.[0] || saf.controle || {};
+  const sap  = saf.saf_integracao_sap?.[0] || saf.integracao || {};
+  const status = ctrl.status || 'ABERTA';
+
+  // ── Cabeçalho ─────────────────────────────────────
+  document.getElementById('page-heading').textContent =
+    saf.titulo || saf.titulo_falha || 'SAF sem título';
+  document.getElementById('page-sub').innerHTML =
+    Fmt.ticket(saf.ticket_saf) + ' &mdash; ' + Fmt.date(saf.criado_em);
+  document.getElementById('current-badge').innerHTML = Fmt.statusBadge(status);
+  document.getElementById('criado-em').textContent = 'Aberta em ' + Fmt.datetime(saf.criado_em);
+
+  // ── Botões de ação RBAC ───────────────────────────
+  const btns = document.getElementById('action-buttons');
+  const temOrdem = !!(sap.aufnr || sap.sap_aufnr);
+
+  // Editar: apenas se devolvida
+  if (status === 'DEVOLVIDA') {
+    btns.innerHTML += `<a href="/editar-saf/${safId}" class="btn btn-primary">✏️ Editar e Reenviar</a>`;
+  }
+  // Cancelar: apenas se sem Ordem SAP (regra de negócio)
+  if (!temOrdem && status !== 'CANCELADA' && status !== 'APROVADA') {
+    btns.innerHTML += `<button class="btn btn-outline" id="btn-cancelar" style="color:var(--danger);border-color:var(--danger);">🗑️ Cancelar</button>`;
+  } else if (temOrdem) {
+    btns.innerHTML += `<button class="btn btn-outline" disabled title="Cancelamento bloqueado: Ordem SAP ${sap.sap_aufnr||sap.aufnr} já gerada." style="opacity:.5;cursor:not-allowed;">🔒 Cancelamento Bloqueado</button>`;
+  }
+
+  // ── Alerta devolução ──────────────────────────────
+  if (status === 'DEVOLVIDA' && ctrl.motivo_devolucao) {
+    const alertEl = document.getElementById('devolucao-alert');
+    alertEl.classList.remove('hidden');
+    document.getElementById('devolucao-motivo').textContent = ' ' + ctrl.motivo_devolucao;
+  }
+
+  // ── Dados SAP ─────────────────────────────────────
+  if (sap.qmnum || sap.sap_qmnum) {
+    document.getElementById('sap-block').classList.remove('hidden');
+    document.getElementById('sap-qmnum').textContent = sap.qmnum || sap.sap_qmnum || '—';
+    document.getElementById('sap-aufnr').textContent = sap.aufnr || sap.sap_aufnr || 'Pendente geração';
+    document.getElementById('sap-sync').textContent  = Fmt.datetime(sap.ultima_tentativa_em || sap.ultima_sincronizacao);
+  }
+
+  // ── Campos ────────────────────────────────────────
+  document.getElementById('d-ticket').innerHTML = Fmt.ticket(saf.ticket_saf);
+  document.getElementById('d-prioridade').innerHTML = Fmt.prioBadge(saf.prioridade || 'MEDIA');
+  document.getElementById('d-notificador').textContent = saf.notificador?.nome || user.nome;
+  document.getElementById('d-data-avaria').textContent = saf.data_inicio_avaria || '—';
+  document.getElementById('d-hora-avaria').textContent = saf.hora_inicio_avaria || '—';
+  document.getElementById('d-local').textContent      = saf.local_instalacao?.descricao || saf.local_instalacao || '—';
+  document.getElementById('d-equipamento').textContent= saf.equipamento?.descricao || saf.equipamento || '—';
+  document.getElementById('d-sintoma').textContent    = saf.sintoma?.descricao || '—';
+  document.getElementById('d-descricao').textContent  = saf.descricao_falha || saf.descricao_longa || '—';
+
+  // ── Foto / GPS ────────────────────────────────────
+  const fotoUrl = saf.url_foto || saf.anexo_evidencia_url;
+  if (fotoUrl) {
+    document.getElementById('foto-card').classList.remove('hidden');
+    document.getElementById('foto-preview').src = fotoUrl;
+    if (saf.foto_lat && saf.foto_lng) {
+      document.getElementById('foto-gps').textContent =
+        `📍 Lat ${saf.foto_lat}, Lng ${saf.foto_lng}`;
+    }
+  }
+
+  // ── Timeline ──────────────────────────────────────
+  const timeline = document.getElementById('timeline');
+  const steps = [
+    { label: 'SAF Criada',        date: saf.criado_em,          dot: 'active' },
+    { label: 'Em Análise (CCM)',  date: ctrl.data_avaliacao,    dot: status === 'ABERTA' ? '' : 'active' },
+    { label: Fmt.statusLabel(status), date: ctrl.data_avaliacao, dot: status === 'APROVADA' ? 'success' : status === 'CANCELADA' ? 'danger' : status === 'DEVOLVIDA' ? 'active' : '' },
+  ];
+  if (sap.qmnum || sap.sap_qmnum) {
+    steps.push({ label: 'Nota SAP Gerada', date: sap.ultima_tentativa_em, dot: 'success' });
+  }
+  timeline.innerHTML = steps.map(s => `
+    <li class="timeline-item">
+      <div class="timeline-dot ${s.dot}"></div>
+      <div class="timeline-text">${s.label}</div>
+      <div class="timeline-date">${Fmt.datetime(s.date)}</div>
+    </li>`).join('');
+
+  document.getElementById('content-area').classList.remove('hidden');
+
+  // ── Cancelamento ──────────────────────────────────
+  const btnCancel = document.getElementById('btn-cancelar');
+  if (btnCancel) {
+    btnCancel.addEventListener('click', () => Modal.open('modal-cancelar'));
+  }
+
+  document.getElementById('btn-confirm-cancelar').addEventListener('click', async function () {
+    const motivo = document.getElementById('motivo-cancelamento').value.trim();
+    if (!motivo) {
+      Toast.warning('Informe o motivo do cancelamento.');
+      return;
+    }
+    setLoading(this, true, 'Cancelando...');
+    const r = await API.cancelarSaf(safId, { motivo_cancelamento: motivo, usuario_id: user.id });
+    setLoading(this, false, 'Confirmar Cancelamento');
+    Modal.close('modal-cancelar');
+    if (r.ok) {
+      Toast.success('SAF cancelada com sucesso.');
+      setTimeout(() => window.location.href = '/minhas-safs', 1500);
+    } else {
+      Toast.error(r.data.erro || 'Erro ao cancelar. Tente novamente.');
+    }
+  });
+});
+</script>
+{% endblock %}

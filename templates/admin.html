@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Administração{% endblock %}
+
+{% block toolbar_nav %}
+<a href="/admin"          class="nav-tab active">Painel Admin</a>
+<a href="/admin/usuarios" class="nav-tab">Usuários</a>
+<a href="/admin/logs"     class="nav-tab">Logs de Auditoria</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+
+  <div class="page-header">
+    <div>
+      <p class="page-title">Painel do Administrador</p>
+      <p class="page-subtitle">Visão geral do sistema, gestão de usuários e auditoria.</p>
+    </div>
+  </div>
+
+  <!-- Stats gerais -->
+  <div class="stats-grid" id="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+    <div class="stat-card">
+      <div class="stat-value" id="s-usuarios">—</div>
+      <div class="stat-label">Usuários Ativos</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-value" id="s-total-safs">—</div>
+      <div class="stat-label">Total SAFs</div>
+    </div>
+    <div class="stat-card success">
+      <div class="stat-value" id="s-integradas">—</div>
+      <div class="stat-label">Integradas SAP</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="s-logs" style="color:var(--info);">—</div>
+      <div class="stat-label">Eventos de Log</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="filter-bar" id="admin-tabs">
+    <button class="filter-tab active" data-tab="usuarios">👥 Usuários</button>
+    <button class="filter-tab" data-tab="logs">📋 Logs de Auditoria</button>
+  </div>
+
+  <!-- ─────────── TAB: USUÁRIOS ─────────── -->
+  <div id="tab-usuarios">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Gestão de Usuários</span>
+        <span id="loading-users" class="text-muted text-sm">Carregando...</span>
+      </div>
+      <div class="table-wrapper" style="border:none;box-shadow:none;border-radius:0;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>E-mail</th>
+              <th>Perfil</th>
+              <th>Ativo</th>
+              <th>Criado em</th>
+            </tr>
+          </thead>
+          <tbody id="usuarios-body">
+            <tr><td colspan="5" class="text-muted text-sm" style="padding:1.5rem;text-align:center;">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── TAB: LOGS ─────────── -->
+  <div id="tab-logs" class="hidden">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Logs de Auditoria</span>
+        <div class="flex gap-2 items-center">
+          <input type="search" id="log-search" class="form-control"
+                 placeholder="🔍 Filtrar evento..." style="height:32px;font-size:.8rem;width:220px;">
+          <span class="text-muted text-sm" id="logs-count"></span>
+        </div>
+      </div>
+      <div class="table-wrapper" style="border:none;box-shadow:none;border-radius:0;max-height:540px;overflow-y:auto;">
+        <table class="table">
+          <thead style="position:sticky;top:0;z-index:1;">
+            <tr>
+              <th>Data/Hora</th>
+              <th>Evento</th>
+              <th>Usuário</th>
+              <th>Payload</th>
+            </tr>
+          </thead>
+          <tbody id="logs-body">
+            <tr><td colspan="4" class="text-muted text-sm" style="padding:1.5rem;text-align:center;">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal: Payload JSON -->
+<div class="modal-backdrop" id="modal-payload">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <span class="modal-title">Payload do Evento</span>
+      <button class="modal-close" onclick="Modal.close('modal-payload')">✕</button>
+    </div>
+    <div class="modal-body">
+      <pre id="payload-content"
+           style="background:var(--surface);padding:1rem;border-radius:var(--radius);font-size:.78rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto;"></pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="Modal.close('modal-payload')">Fechar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block page_script %}
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  const user = Auth.requireAuth(['ADMIN']);
+  if (!user) return;
+
+  let allLogs = [];
+  let allUsuarios = [];
+
+  // ── Carrega dados em paralelo ────────────────────
+  const [resUsers, resLogs] = await Promise.all([
+    API.usuarios(),
+    API.logs(),
+  ]);
+
+  // ── Usuários ──────────────────────────────────────
+  const perfisLabel = { SOLICITANTE: 'Solicitante', CCM: 'CCM', ADMIN: 'Administrador' };
+  const perfisBadge = { SOLICITANTE: 'badge-aberta', CCM: 'badge-em_analise', ADMIN: 'badge-aprovada' };
+
+  if (resUsers.ok) {
+    allUsuarios = resUsers.data.usuarios || resUsers.data || [];
+    document.getElementById('s-usuarios').textContent = allUsuarios.filter(u => u.ativo !== false).length;
+    document.getElementById('loading-users').textContent = `${allUsuarios.length} registros`;
+
+    const rows = allUsuarios.map(u => `
+      <tr>
+        <td style="font-weight:600;">${u.nome || '—'}</td>
+        <td class="text-muted">${u.email || '—'}</td>
+        <td><span class="badge ${perfisBadge[u.perfil] || ''}">${perfisLabel[u.perfil] || u.perfil}</span></td>
+        <td>
+          ${u.ativo !== false
+            ? '<span style="color:var(--green);font-weight:700;font-size:.8rem;">● Ativo</span>'
+            : '<span style="color:var(--text-light);font-size:.8rem;">○ Inativo</span>'}
+        </td>
+        <td class="text-muted text-sm">${Fmt.date(u.criado_em)}</td>
+      </tr>`).join('');
+
+    document.getElementById('usuarios-body').innerHTML = rows || '<tr><td colspan="5" class="text-muted" style="text-align:center;padding:1.5rem;">Nenhum usuário.</td></tr>';
+  } else {
+    document.getElementById('usuarios-body').innerHTML =
+      `<tr><td colspan="5" style="color:var(--danger);text-align:center;padding:1.5rem;">${resUsers.data.erro || 'Erro ao carregar usuários.'}</td></tr>`;
+  }
+
+  // ── Logs ──────────────────────────────────────────
+  const eventoClasses = {
+    LOGIN: 'badge-aprovada',
+    CRIACAO_SAF: 'badge-aberta',
+    AVALIACAO_CCM: 'badge-em_analise',
+    INTEGRACAO_SAP: 'badge-aprovada',
+    BAPI_CREATE_ERROR: 'badge-cancelada',
+    AVALIACAO_CCM_DEVOLVIDA: 'badge-devolvida',
+    AVALIACAO_CCM_CANCELADA: 'badge-cancelada',
+    INTEGRACAO_SAP_SUCESSO: 'badge-aprovada',
+    INTEGRACAO_SAP_ERRO: 'badge-cancelada',
+  };
+
+  function renderLogs(list) {
+    document.getElementById('logs-count').textContent = `${list.length} evento(s)`;
+    if (!list.length) {
+      document.getElementById('logs-body').innerHTML =
+        '<tr><td colspan="4" class="text-muted" style="text-align:center;padding:1.5rem;">Nenhum log encontrado.</td></tr>';
+      return;
+    }
+    const rows = list.map(log => {
+      const cls = Object.keys(eventoClasses).find(k => (log.evento||'').includes(k));
+      const badgeCls = cls ? eventoClasses[cls] : '';
+      return `
+        <tr>
+          <td class="text-muted text-sm" style="white-space:nowrap;">${Fmt.datetime(log.criado_em)}</td>
+          <td><span class="badge ${badgeCls}" style="font-size:.72rem;">${log.evento || '—'}</span></td>
+          <td class="text-sm">${log.usuario_id ? log.usuario_id.substring(0,8) + '…' : '—'}</td>
+          <td>
+            ${log.payload
+              ? `<button class="btn btn-ghost btn-sm" onclick="showPayload(${JSON.stringify(JSON.stringify(log.payload))})">🔍 Ver</button>`
+              : '<span class="text-muted text-xs">—</span>'}
+          </td>
+        </tr>`;
+    }).join('');
+    document.getElementById('logs-body').innerHTML = rows;
+  }
+
+  if (resLogs.ok) {
+    allLogs = resLogs.data.logs || resLogs.data || [];
+    document.getElementById('s-logs').textContent = allLogs.length;
+    renderLogs(allLogs);
+
+    // Filtro de busca
+    let searchTimer;
+    document.getElementById('log-search').addEventListener('input', function () {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const q = this.value.trim().toLowerCase();
+        const filtered = q ? allLogs.filter(l => (l.evento||'').toLowerCase().includes(q)) : allLogs;
+        renderLogs(filtered);
+      }, 200);
+    });
+  } else {
+    document.getElementById('logs-body').innerHTML =
+      `<tr><td colspan="4" style="color:var(--danger);text-align:center;padding:1.5rem;">${resLogs.data.erro || 'Erro ao carregar logs.'}</td></tr>`;
+  }
+
+  // Stats
+  document.getElementById('s-total-safs').textContent = '—';
+  document.getElementById('s-integradas').textContent  = '—';
+
+  // ── Tabs ──────────────────────────────────────────
+  document.querySelectorAll('[data-tab]').forEach(tab => {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('[data-tab]').forEach(t => t.classList.remove('active'));
+      this.classList.add('active');
+      ['usuarios','logs'].forEach(id => document.getElementById(`tab-${id}`).classList.add('hidden'));
+      document.getElementById(`tab-${this.dataset.tab}`).classList.remove('hidden');
+    });
+  });
+});
+
+// Mostra payload JSON em modal
+function showPayload(jsonStr) {
+  try {
+    const obj = JSON.parse(jsonStr);
+    document.getElementById('payload-content').textContent = JSON.stringify(obj, null, 2);
+  } catch {
+    document.getElementById('payload-content').textContent = jsonStr;
+  }
+  Modal.open('modal-payload');
+}
+</script>
+{% endblock %}

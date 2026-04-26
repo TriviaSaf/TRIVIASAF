@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Fila CCM{% endblock %}
+
+{% block toolbar_nav %}
+<a href="/fila-ccm"   class="nav-tab active">Fila de Análise</a>
+<a href="/relatorio-ccm" class="nav-tab">Relatório Global</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+
+  <div class="page-header">
+    <div>
+      <p class="page-title">Gestão de Falhas – CCM</p>
+      <p class="page-subtitle">Analise, confirme ou solicite complemento para cada solicitação.</p>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card accent">
+      <div class="stat-value" id="s-abertas">—</div>
+      <div class="stat-label">Pendentes</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="s-em_analise" style="color:var(--info);">—</div>
+      <div class="stat-label">Em Análise</div>
+    </div>
+    <div class="stat-card success">
+      <div class="stat-value" id="s-aprovadas">—</div>
+      <div class="stat-label">Confirmadas Hoje</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="s-total">—</div>
+      <div class="stat-label">Total</div>
+    </div>
+  </div>
+
+  <!-- Filter + Search -->
+  <div class="filter-bar">
+    <button class="filter-tab active" data-filter="TODAS">
+      Todas <span class="fcount" id="fc-todas">0</span>
+    </button>
+    <button class="filter-tab" data-filter="ABERTA">
+      Pendente CCM <span class="fcount" id="fc-aberta">0</span>
+    </button>
+    <button class="filter-tab" data-filter="EM_ANALISE">
+      Em Análise <span class="fcount" id="fc-em_analise">0</span>
+    </button>
+    <button class="filter-tab" data-filter="DEVOLVIDA">
+      Devolvidas <span class="fcount" id="fc-devolvida">0</span>
+    </button>
+    <button class="filter-tab" data-filter="APROVADA">
+      Confirmadas <span class="fcount" id="fc-aprovada">0</span>
+    </button>
+    <div style="flex:1;min-width:150px;">
+      <input type="search" id="search-input" class="form-control"
+             placeholder="🔍  Buscar por ticket, equipamento ou notificador..." style="height:34px;font-size:.82rem;">
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrapper" id="table-container">
+    <div class="spinner-center"><div class="spinner"></div></div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block page_script %}
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  const user = Auth.requireAuth(['CCM']);
+  if (!user) return;
+
+  // Solicita localização + notificações (tela inicial do CCM)
+  Permissions.requestAll();
+
+  let allSafs = [];
+  let activeFilter = 'TODAS';
+  let searchTerm = '';
+
+  const res = await API.filaCCM();
+
+  if (!res.ok) {
+    document.getElementById('table-container').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">⚠️</div>
+        <p class="empty-state-title">Erro ao carregar fila</p>
+        <p class="empty-state-text">${res.data.erro || 'Tente novamente.'}</p>
+      </div>`;
+    return;
+  }
+
+  // A rota /ccm/pendentes retorna array de controle com saf_solicitacoes embutido
+  allSafs = res.data || [];
+
+  function getStatus(item) { return item.status || 'ABERTA'; }
+  function getSaf(item)    { return item.saf_solicitacoes || {}; }
+  function getTicket(item) { return getSaf(item).ticket_saf || item.solicitacao_id?.substring(0,8); }
+
+  // ── Counters ──────────────────────────────────────
+  function updateCounters() {
+    const c = { ABERTA: 0, EM_ANALISE: 0, DEVOLVIDA: 0, APROVADA: 0, CANCELADA: 0 };
+    allSafs.forEach(s => { const st = getStatus(s); if (c[st] !== undefined) c[st]++; });
+    document.getElementById('s-abertas').textContent   = c.ABERTA;
+    document.getElementById('s-em_analise').textContent= c.EM_ANALISE;
+    document.getElementById('s-aprovadas').textContent = c.APROVADA;
+    document.getElementById('s-total').textContent     = allSafs.length;
+    document.getElementById('fc-todas').textContent    = allSafs.length;
+    document.getElementById('fc-aberta').textContent   = c.ABERTA;
+    document.getElementById('fc-em_analise').textContent= c.EM_ANALISE;
+    document.getElementById('fc-devolvida').textContent= c.DEVOLVIDA;
+    document.getElementById('fc-aprovada').textContent = c.APROVADA;
+  }
+
+  // ── Render ────────────────────────────────────────
+  function renderTable() {
+    let filtered = allSafs;
+
+    if (activeFilter !== 'TODAS') {
+      filtered = filtered.filter(s => getStatus(s) === activeFilter);
+    }
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      filtered = filtered.filter(s => {
+        const saf = getSaf(s);
+        return (
+          String(getTicket(s)).toLowerCase().includes(q) ||
+          (saf.equipamento || '').toLowerCase().includes(q) ||
+          (saf.titulo_falha || '').toLowerCase().includes(q) ||
+          (saf.notificador_nome || '').toLowerCase().includes(q)
+        );
+      });
+    }
+
+    const container = document.getElementById('table-container');
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📭</div>
+          <p class="empty-state-title">Nenhuma solicitação</p>
+          <p class="empty-state-text">Não há itens correspondentes ao filtro selecionado.</p>
+        </div>`;
+      return;
+    }
+
+    const rows = filtered.map(item => {
+      const saf    = getSaf(item);
+      const status = getStatus(item);
+      const ticket = getTicket(item);
+      const sapNota = saf.sap_qmnum ? `<span class="font-mono" style="font-size:.78rem;">${saf.sap_qmnum}</span>` : '<span class="text-muted text-xs">Pendente</span>';
+      const sapIndicator = saf.sap_qmnum
+        ? `<span class="sap-indicator sim">✔ Sim</span>`
+        : `<span class="sap-indicator nao">– Não</span>`;
+      return `
+        <tr class="clickable" onclick="window.location.href='/avaliar-saf/${item.solicitacao_id}'">
+          <td>${Fmt.ticket(ticket)}</td>
+          <td>${sapNota}</td>
+          <td>${Fmt.statusBadge(status)}</td>
+          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${saf.titulo_falha || '—'}</td>
+          <td class="text-muted text-sm">${saf.equipamento || '—'}</td>
+          <td>${Fmt.prioBadge(saf.prioridade || 'MEDIA')}</td>
+          <td class="text-muted text-sm">${saf.notificador_nome || '—'}</td>
+          <td>${sapIndicator}</td>
+          <td class="text-muted text-sm">${Fmt.date(item.criado_em)}</td>
+          <td>
+            <a href="/avaliar-saf/${item.solicitacao_id}"
+               class="btn btn-primary btn-sm" onclick="event.stopPropagation();">
+              Avaliar
+            </a>
+          </td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Ticket SAF</th>
+            <th>Nº Nota SAP</th>
+            <th>Status</th>
+            <th>Descrição</th>
+            <th>Equipamento</th>
+            <th>Prioridade</th>
+            <th>Notificador</th>
+            <th>Nota Criada</th>
+            <th>Data</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  // ── Events ────────────────────────────────────────
+  document.querySelectorAll('.filter-tab').forEach(tab => {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+      this.classList.add('active');
+      activeFilter = this.dataset.filter;
+      renderTable();
+    });
+  });
+
+  let searchTimer;
+  document.getElementById('search-input').addEventListener('input', function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { searchTerm = this.value.trim(); renderTable(); }, 220);
+  });
+
+  updateCounters();
+  renderTable();
+});
+</script>
+{% endblock %}

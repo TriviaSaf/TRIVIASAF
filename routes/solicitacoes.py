@@ -43,14 +43,7 @@ def listar_minhas_safs(usuario_id):
 
 @solicitacoes_bp.route("/criar", methods=["POST"])
 def criar_saf():
-    payload = request.get_json(silent=True) or {}
-
-    titulo = payload.get("titulo")
-    descricao = payload.get("descricao")
-    usuario_id = payload.get("usuario_id")
-
-    if not titulo or not descricao or not usuario_id:
-        return jsonify({"erro": "'titulo', 'descricao' e 'usuario_id' sao obrigatorios."}), 400
+    dados = request.get_json(silent=True) or {}
 
     try:
         supabase = _get_supabase_client()
@@ -58,33 +51,32 @@ def criar_saf():
         return jsonify({"erro": "Configuracao do Supabase ausente"}), 500
 
     try:
-        # 1. Insere na tabela saf_solicitacoes
-        nova_saf = (
-            supabase.table("saf_solicitacoes")
-            .insert({
-                "solicitante_id": usuario_id,
-                "titulo": titulo,
-                "descricao_falha": descricao,
-                "local_instalacao_id": payload.get("local_id"),
-                "equipamento_id": payload.get("equipamento_id"),
-                "prioridade": payload.get("prioridade", "MEDIA"),
-            })
-            .execute()
-        )
+        # 1. Monta o payload com os novos nomes de colunas
+        nova_saf = {
+            "notificador_id": dados.get("notificador_id"),
+            "titulo_falha": dados.get("titulo_falha"),
+            "descricao_longa": dados.get("descricao_longa"),
+            "local_instalacao": dados.get("local_instalacao"),
+            "equipamento": dados.get("equipamento"),
+            "prioridade": int(dados.get("prioridade")),
+            "data_inicio_avaria": dados.get("data_inicio_avaria"),
+            "hora_inicio_avaria": dados.get("hora_inicio_avaria"),
+        }
 
-        saf_id = nova_saf.data[0]["id"]
+        # 2. Insere na tabela principal
+        resposta_saf = supabase.table("saf_solicitacoes").insert(nova_saf).execute()
 
-        # 2. Cria o registro de controle CCM com status inicial
-        supabase.table("saf_controle_ccm").insert({
+        saf_id = resposta_saf.data[0]["id"]
+        ticket = resposta_saf.data[0]["ticket_saf"]
+
+        # 3. Insere no controle CCM
+        novo_controle = {
             "solicitacao_id": saf_id,
             "status": "ABERTA",
-        }).execute()
+        }
+        supabase.table("saf_controle_ccm").insert(novo_controle).execute()
 
-        return jsonify({
-            "mensagem": "SAF criada com sucesso.",
-            "saf_id": saf_id,
-            "status": "ABERTA",
-        }), 201
+        return jsonify({"mensagem": "SAF criada com sucesso!", "ticket": f"SAF #{ticket}"}), 201
 
     except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+        return jsonify({"erro_interno": str(e)}), 500

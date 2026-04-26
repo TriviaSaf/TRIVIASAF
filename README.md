@@ -99,12 +99,14 @@ Acesse: `http://127.0.0.1:5000/`
 ```json
 // POST /api/solicitacoes/criar
 {
-  "usuario_id": "<uuid>",
-  "titulo": "Bomba com vazamento",
-  "descricao": "Identificado vazamento no selo mecânico",
-  "local_id": 1,
-  "equipamento_id": 2,
-  "prioridade": "ALTA"
+  "notificador_id": "<uuid>",
+  "titulo_falha": "Bomba com vazamento",
+  "descricao_longa": "Identificado vazamento no selo mecânico",
+  "local_instalacao": "LI-0001",
+  "equipamento": "EQ-0001",
+  "prioridade": 2,
+  "data_inicio_avaria": "2026-04-25",
+  "hora_inicio_avaria": "14:30:00"
 }
 ```
 
@@ -135,6 +137,24 @@ Acesse: `http://127.0.0.1:5000/`
 | GET | `/api/dados/locais` | Lista locais de instalação |
 | GET | `/api/dados/equipamentos/<local_id>` | Equipamentos por local |
 | GET | `/api/dados/sintomas/<equipamento_id>` | Catálogo de sintomas |
+
+---
+
+## Endpoints por Método
+
+### GET
+
+- /api/solicitacoes/minhas-safs/<usuario_id>
+- /api/ccm/pendentes
+- /api/dados/locais
+- /api/dados/equipamentos/<local_id>
+- /api/dados/sintomas/<equipamento_id>
+
+### POST
+
+- /api/auth/login
+- /api/solicitacoes/criar
+- /api/ccm/avaliar/<saf_id>
 
 ---
 

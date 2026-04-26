@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Minhas SAFs{% endblock %}
+
+{% block toolbar_nav %}
+<a href="/minhas-safs" class="nav-tab active">Minhas SAFs</a>
+<a href="/nova-saf"   class="nav-tab">Nova SAF</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div>
+      <p class="page-title" id="greeting">Minhas Solicitações</p>
+      <p class="page-subtitle">Acompanhe o andamento de todas as suas solicitações de abertura de falha.</p>
+    </div>
+    <a href="/nova-saf" class="btn btn-accent btn-lg">
+      &#43; Nova SAF
+    </a>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-label">Total</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-value" id="stat-abertas">—</div>
+      <div class="stat-label">Pendente CCM</div>
+    </div>
+    <div class="stat-card" style="--sv: var(--purple);">
+      <div class="stat-value" id="stat-devolvidas" style="color:var(--purple);">—</div>
+      <div class="stat-label">Complemento</div>
+    </div>
+    <div class="stat-card success">
+      <div class="stat-value" id="stat-aprovadas">—</div>
+      <div class="stat-label">Confirmadas</div>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar" id="filter-bar">
+    <button class="filter-tab active" data-filter="TODAS">
+      Todas <span class="fcount" id="fc-todas">0</span>
+    </button>
+    <button class="filter-tab" data-filter="ABERTA">
+      Pendente CCM <span class="fcount" id="fc-aberta">0</span>
+    </button>
+    <button class="filter-tab" data-filter="DEVOLVIDA">
+      Complemento <span class="fcount" id="fc-devolvida">0</span>
+    </button>
+    <button class="filter-tab" data-filter="APROVADA">
+      Confirmadas <span class="fcount" id="fc-aprovada">0</span>
+    </button>
+    <button class="filter-tab" data-filter="CANCELADA">
+      Canceladas <span class="fcount" id="fc-cancelada">0</span>
+    </button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrapper" id="table-container">
+    <div class="spinner-center"><div class="spinner"></div></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block page_script %}
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  const user = Auth.requireAuth(['SOLICITANTE']);
+  if (!user) return;
+
+  // Solicita localização e notificações (apenas se ainda não decidido)
+  Permissions.requestAll();
+
+  // Greeting personalizado
+  const hour = new Date().getHours();
+  const saud = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  document.getElementById('greeting').textContent = `${saud}, ${user.nome.split(' ')[0]}`;
+
+  let allSafs = [];
+  let activeFilter = 'TODAS';
+
+  // ── Buscar dados ──────────────────────────────────
+  const res = await API.minhasSafs(user.id);
+
+  if (!res.ok) {
+    document.getElementById('table-container').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">⚠️</div>
+        <p class="empty-state-title">Erro ao carregar dados</p>
+        <p class="empty-state-text">${res.data.erro || 'Tente novamente mais tarde.'}</p>
+      </div>`;
+    return;
+  }
+
+  allSafs = res.data.solicitacoes || [];
+
+  // ── Counters ──────────────────────────────────────
+  function getStatus(saf) {
+    return saf.saf_controle_ccm?.[0]?.status || saf.status || 'ABERTA';
+  }
+
+  function updateCounters() {
+    const counts = { ABERTA: 0, EM_ANALISE: 0, DEVOLVIDA: 0, APROVADA: 0, CANCELADA: 0 };
+    allSafs.forEach(s => { const st = getStatus(s); if (counts[st] !== undefined) counts[st]++; });
+
+    document.getElementById('stat-total').textContent     = allSafs.length;
+    document.getElementById('stat-abertas').textContent   = counts.ABERTA + counts.EM_ANALISE;
+    document.getElementById('stat-devolvidas').textContent= counts.DEVOLVIDA;
+    document.getElementById('stat-aprovadas').textContent = counts.APROVADA;
+    document.getElementById('fc-todas').textContent       = allSafs.length;
+    document.getElementById('fc-aberta').textContent      = counts.ABERTA + counts.EM_ANALISE;
+    document.getElementById('fc-devolvida').textContent   = counts.DEVOLVIDA;
+    document.getElementById('fc-aprovada').textContent    = counts.APROVADA;
+    document.getElementById('fc-cancelada').textContent   = counts.CANCELADA;
+  }
+
+  // ── Render table ──────────────────────────────────
+  function renderTable(filter) {
+    const filtered = filter === 'TODAS'
+      ? allSafs
+      : allSafs.filter(s => getStatus(s) === filter);
+
+    const container = document.getElementById('table-container');
+
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <p class="empty-state-title">Nenhuma solicitação encontrada</p>
+          <p class="empty-state-text">Crie sua primeira SAF clicando em "+ Nova SAF".</p>
+        </div>`;
+      return;
+    }
+
+    const rows = filtered.map(saf => {
+      const ctrl   = saf.saf_controle_ccm?.[0] || {};
+      const status = ctrl.status || 'ABERTA';
+      const sapId  = saf.sap_qmnum ? `<span class="font-mono" style="font-size:.8rem;">${saf.sap_qmnum}</span>` : '<span class="text-muted">—</span>';
+      const devAlert = status === 'DEVOLVIDA'
+        ? `<div style="font-size:.74rem;color:var(--purple);margin-top:2px;">⚠ ${(ctrl.motivo_devolucao||'').substring(0,50)}${ctrl.motivo_devolucao?.length > 50 ? '…' : ''}</div>`
+        : '';
+      return `
+        <tr class="clickable" onclick="window.location.href='/saf/${saf.id}'">
+          <td>${Fmt.ticket(saf.ticket_saf || saf.id?.substring(0,8))}</td>
+          <td>${sapId}</td>
+          <td>${Fmt.statusBadge(status)} ${devAlert}</td>
+          <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${saf.titulo || saf.titulo_falha || '—'}</td>
+          <td>${Fmt.prioBadge(saf.prioridade || 'MEDIA')}</td>
+          <td class="text-muted text-sm">${Fmt.date(saf.criado_em)}</td>
+          <td>
+            <a href="/saf/${saf.id}" class="btn btn-ghost btn-sm">Ver</a>
+          </td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Ticket SAF</th>
+            <th>Nº Nota SAP</th>
+            <th>Status</th>
+            <th>Descrição</th>
+            <th>Prioridade</th>
+            <th>Data</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  // ── Filter tabs ───────────────────────────────────
+  document.querySelectorAll('.filter-tab').forEach(tab => {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+      this.classList.add('active');
+      activeFilter = this.dataset.filter;
+      renderTable(activeFilter);
+    });
+  });
+
+  updateCounters();
+  renderTable('TODAS');
+});
+</script>
+{% endblock %}

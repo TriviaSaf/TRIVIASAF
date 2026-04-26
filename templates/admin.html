@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}Administração{% endblock %}
+
+{% block toolbar_nav %}
+<a href="/admin"          class="nav-tab active">Painel Admin</a>
+<a href="/admin/usuarios" class="nav-tab">Usuários</a>
+<a href="/admin/logs"     class="nav-tab">Logs de Auditoria</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+
+  <div class="page-header">
+    <div>
+      <p class="page-title">Painel do Administrador</p>
+      <p class="page-subtitle">Visão geral do sistema, gestão de usuários e auditoria.</p>
+    </div>
+  </div>
+
+  <!-- Stats gerais -->
+  <div class="stats-grid" id="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+    <div class="stat-card">
+      <div class="stat-value" id="s-usuarios">—</div>
+      <div class="stat-label">Usuários Ativos</div>
+    </div>
+    <div class="stat-card" style="border-top:3px solid var(--warning);">
+      <div class="stat-value" id="s-pendentes" style="color:var(--warning);">—</div>
+      <div class="stat-label">Aguardando Aprovação</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-value" id="s-total-safs">—</div>
+      <div class="stat-label">Total SAFs</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="s-logs" style="color:var(--info);">—</div>
+      <div class="stat-label">Eventos de Log</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="filter-bar" id="admin-tabs">
+    <button class="filter-tab active" data-tab="usuarios">👥 Usuários</button>
+    <button class="filter-tab" data-tab="logs">📋 Logs de Auditoria</button>
+  </div>
+
+  <!-- ─────────── TAB: USUÁRIOS ─────────── -->
+  <div id="tab-usuarios">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Gestão de Usuários</span>
+        <div style="display:flex;align-items:center;gap:.75rem;">
+          <label style="font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:.35rem;">
+            <input type="checkbox" id="filter-pendentes" style="accent-color:var(--warning);">
+            Somente pendentes
+          </label>
+          <span id="loading-users" class="text-muted text-sm">Carregando...</span>
+        </div>
+      </div>
+      <div class="table-wrapper" style="border:none;box-shadow:none;border-radius:0;overflow-x:auto;">
+        <table class="table" style="min-width:860px;">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>E-mail</th>
+              <th>Empresa</th>
+              <th>Área</th>
+              <th>Perfil</th>
+              <th>Acesso</th>
+              <th>Cadastro</th>
+              <th style="width:180px;">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="usuarios-body">
+            <tr><td colspan="8" class="text-muted text-sm" style="padding:1.5rem;text-align:center;">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── TAB: LOGS ─────────── -->
+  <div id="tab-logs" class="hidden">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Logs de Auditoria</span>
+        <div class="flex gap-2 items-center">
+          <input type="search" id="log-search" class="form-control"
+                 placeholder="🔍 Filtrar evento..." style="height:32px;font-size:.8rem;width:220px;">
+          <span class="text-muted text-sm" id="logs-count"></span>
+        </div>
+      </div>
+      <div class="table-wrapper" style="border:none;box-shadow:none;border-radius:0;max-height:540px;overflow-y:auto;">
+        <table class="table">
+          <thead style="position:sticky;top:0;z-index:1;">
+            <tr>
+              <th>Data/Hora</th>
+              <th>Evento</th>
+              <th>Usuário</th>
+              <th>Payload</th>
+            </tr>
+          </thead>
+          <tbody id="logs-body">
+            <tr><td colspan="4" class="text-muted text-sm" style="padding:1.5rem;text-align:center;">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal: Payload JSON -->
+<div class="modal-backdrop" id="modal-payload">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <span class="modal-title">Payload do Evento</span>
+      <button class="modal-close" onclick="Modal.close('modal-payload')">✕</button>
+    </div>
+    <div class="modal-body">
+      <pre id="payload-content"
+           style="background:var(--surface);padding:1rem;border-radius:var(--radius);font-size:.78rem;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto;"></pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="Modal.close('modal-payload')">Fechar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block page_script %}
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  const user = Auth.requireAuth(['ADMIN']);
+  if (!user) return;
+
+  let allLogs      = [];
+  let allUsuarios  = [];
+
+  // ── Labels / badges de perfil ────────────────────
+  const PERFIS_LABEL  = { Solicitante: 'Solicitante', CCM: 'CCM', Administrador: 'Administrador' };
+  const PERFIS_BADGE  = { Solicitante: 'badge-aberta', CCM: 'badge-em_analise', Administrador: 'badge-aprovada' };
+  const EMPRESAS      = { TRIVIA:'Trivia Trens', TIC:'Tic Trens', METROBH:'Metrô BH', GOCIL:'Gocil' };
+  const AREAS         = { MANUTENCAO:'Manutenção', OPERACAO:'Operação', ENGENHARIA:'Engenharia',
+                          TI:'TI', SEGURANCA:'Segurança', LIMPEZA:'Limpeza e conservação' };
+
+  // ── Renderiza usuários ───────────────────────────
+  function renderUsuarios(list) {
+    document.getElementById('loading-users').textContent = `${list.length} registro(s)`;
+    if (!list.length) {
+      document.getElementById('usuarios-body').innerHTML =
+        '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:1.5rem;">Nenhum usuário encontrado.</td></tr>';
+      return;
+    }
+    const rows = list.map(u => {
+      const aprovBadge = u.aprovado
+        ? '<span style="color:var(--green);font-weight:700;font-size:.8rem;">&#9679; Aprovado</span>'
+        : '<span style="color:var(--warning);font-weight:700;font-size:.8rem;">&#9203; Pendente</span>';
+
+      const toggleSwitch = `
+        <label class="aprov-switch" title="${u.aprovado ? 'Clique para bloquear acesso' : 'Clique para aprovar acesso'}">
+          <input type="checkbox" ${u.aprovado ? 'checked' : ''}
+                 onchange="toggleAcesso('${u.id}', this.checked, this)">
+          <span class="aprov-slider"></span>
+        </label>`;
+
+      const perfilSelect = `
+        <select class="field-input" style="height:28px;font-size:.75rem;padding:2px 8px;"
+                onchange="mudarPerfil('${u.id}', this.value)">
+          <option value="Solicitante" ${u.perfil==='Solicitante'?'selected':''}>Solicitante</option>
+          <option value="CCM"         ${u.perfil==='CCM'        ?'selected':''}>CCM</option>
+          <option value="Administrador" ${u.perfil==='Administrador'?'selected':''}>Administrador</option>
+        </select>`;
+
+      return `
+        <tr id="user-row-${u.id}">
+          <td style="font-weight:600;">${u.nome || '—'}</td>
+          <td class="text-muted text-sm">${u.email || '—'}</td>
+          <td class="text-sm">${EMPRESAS[u.empresa] || u.empresa || '—'}</td>
+          <td class="text-sm">${AREAS[u.area] || u.area || '—'}</td>
+          <td>${perfilSelect}</td>
+          <td>${aprovBadge}</td>
+          <td class="text-muted text-sm">${Fmt.date(u.criado_em)}</td>
+          <td style="text-align:center;">${toggleSwitch}</td>
+        </tr>`;
+    }).join('');
+    document.getElementById('usuarios-body').innerHTML = rows;
+  }
+
+  // ── Carrega dados em paralelo ────────────────────
+  const [resUsers, resLogs] = await Promise.all([
+    API.usuarios(),
+    API.logs(),
+  ]);
+
+  if (resUsers.ok) {
+    allUsuarios = resUsers.data.usuarios || resUsers.data || [];
+    document.getElementById('s-usuarios').textContent = allUsuarios.filter(u => u.aprovado).length;
+    document.getElementById('s-pendentes').textContent = allUsuarios.filter(u => !u.aprovado).length;
+    renderUsuarios(allUsuarios);
+  } else {
+    document.getElementById('usuarios-body').innerHTML =
+      `<tr><td colspan="8" style="color:var(--danger);text-align:center;padding:1.5rem;">${resUsers.data.erro || 'Erro ao carregar usuários.'}</td></tr>`;
+  }
+
+  // Filtro de pendentes
+  document.getElementById('filter-pendentes').addEventListener('change', function () {
+    renderUsuarios(this.checked ? allUsuarios.filter(u => !u.aprovado) : allUsuarios);
+  });
+
+  // ── Logs ──────────────────────────────────────────
+  const eventoClasses = {
+    LOGIN: 'badge-aprovada', CRIACAO_SAF: 'badge-aberta',
+    AVALIACAO_CCM: 'badge-em_analise', INTEGRACAO_SAP: 'badge-aprovada',
+    BAPI_CREATE_ERROR: 'badge-cancelada', AVALIACAO_CCM_DEVOLVIDA: 'badge-devolvida',
+    AVALIACAO_CCM_CANCELADA: 'badge-cancelada', INTEGRACAO_SAP_ERRO: 'badge-cancelada',
+  };
+
+  function renderLogs(list) {
+    document.getElementById('logs-count').textContent = `${list.length} evento(s)`;
+    if (!list.length) {
+      document.getElementById('logs-body').innerHTML =
+        '<tr><td colspan="4" class="text-muted" style="text-align:center;padding:1.5rem;">Nenhum log encontrado.</td></tr>';
+      return;
+    }
+    const rows = list.map(log => {
+      const cls = Object.keys(eventoClasses).find(k => (log.evento||'').includes(k));
+      const badgeCls = cls ? eventoClasses[cls] : '';
+      return `
+        <tr>
+          <td class="text-muted text-sm" style="white-space:nowrap;">${Fmt.datetime(log.criado_em)}</td>
+          <td><span class="badge ${badgeCls}" style="font-size:.72rem;">${log.evento || '—'}</span></td>
+          <td class="text-sm">${log.usuario_id ? log.usuario_id.substring(0,8) + '…' : '—'}</td>
+          <td>
+            ${log.payload
+              ? `<button class="btn btn-ghost btn-sm" onclick="showPayload(${JSON.stringify(JSON.stringify(log.payload))})">🔍 Ver</button>`
+              : '<span class="text-muted text-xs">—</span>'}
+          </td>
+        </tr>`;
+    }).join('');
+    document.getElementById('logs-body').innerHTML = rows;
+  }
+
+  if (resLogs.ok) {
+    allLogs = resLogs.data.logs || resLogs.data || [];
+    document.getElementById('s-logs').textContent = allLogs.length;
+    renderLogs(allLogs);
+    let searchTimer;
+    document.getElementById('log-search').addEventListener('input', function () {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const q = this.value.trim().toLowerCase();
+        renderLogs(q ? allLogs.filter(l => (l.evento||'').toLowerCase().includes(q)) : allLogs);
+      }, 200);
+    });
+  } else {
+    document.getElementById('logs-body').innerHTML =
+      `<tr><td colspan="4" style="color:var(--danger);text-align:center;padding:1.5rem;">${resLogs.data.erro || 'Erro ao carregar logs.'}</td></tr>`;
+  }
+
+  document.getElementById('s-total-safs').textContent = '—';
+
+  // ── Tabs ──────────────────────────────────────────
+  document.querySelectorAll('[data-tab]').forEach(tab => {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('[data-tab]').forEach(t => t.classList.remove('active'));
+      this.classList.add('active');
+      ['usuarios','logs'].forEach(id => document.getElementById(`tab-${id}`).classList.add('hidden'));
+      document.getElementById(`tab-${this.dataset.tab}`).classList.remove('hidden');
+    });
+  });
+});
+
+// ── Ações de usuário ─────────────────────────────
+async function toggleAcesso(id, aprovado, el) {
+  if (!aprovado) {
+    ConfirmModal.show({
+      title: 'Bloquear acesso',
+      message: 'Deseja bloquear o acesso deste usuário?',
+      confirmText: 'Bloquear',
+      confirmClass: 'btn-danger',
+      onConfirm: () => _aplicarAcesso(id, false, el)
+    });
+    el.checked = true; // reverte visualmente até confirmação
+    return;
+  }
+  await _aplicarAcesso(id, true, el);
+}
+
+async function _aplicarAcesso(id, aprovado, el) {
+  el.checked = aprovado;
+  const res = await API.aprovarUsuario(id, aprovado);
+  if (res.ok) {
+    Toast.success(aprovado ? 'Usuário aprovado!' : 'Acesso bloqueado.');
+    const row = el.closest('tr');
+    if (row) {
+      const badgeCell = row.cells[5];
+      badgeCell.innerHTML = aprovado
+        ? '<span style="color:var(--green);font-weight:700;font-size:.8rem;">&#9679; Aprovado</span>'
+        : '<span style="color:var(--warning);font-weight:700;font-size:.8rem;">&#9203; Pendente</span>';
+      el.closest('label').title = aprovado ? 'Clique para bloquear acesso' : 'Clique para aprovar acesso';
+    }
+  } else {
+    Toast.error(res.data.erro || 'Erro ao alterar acesso.');
+    el.checked = !aprovado;
+  }
+}
+
+async function aprovarUsuario(id) {
+  const res = await API.aprovarUsuario(id, true);
+  if (res.ok) { Toast.success('Usuário aprovado!'); location.reload(); }
+  else         Toast.error(res.data.erro || 'Erro ao aprovar.');
+}
+
+async function bloquearUsuario(id) {
+  const confirmed = await confirmAction('Bloquear acesso deste usuário?');
+  if (!confirmed) return;
+  const res = await API.aprovarUsuario(id, false);
+  if (res.ok) { Toast.success('Acesso bloqueado.'); location.reload(); }
+  else         Toast.error(res.data.erro || 'Erro ao bloquear.');
+}
+
+async function mudarPerfil(id, perfil) {
+  const res = await API.alterarPerfil(id, perfil);
+  if (res.ok) Toast.success(`Perfil alterado para ${perfil}.`);
+  else        Toast.error(res.data.erro || 'Erro ao alterar perfil.');
+}
+
+// Mostra payload JSON em modal
+function showPayload(jsonStr) {
+  try {
+    const obj = JSON.parse(jsonStr);
+    document.getElementById('payload-content').textContent = JSON.stringify(obj, null, 2);
+  } catch { document.getElementById('payload-content').textContent = jsonStr; }
+  Modal.open('modal-payload');
+}
+</script>
+{% endblock %}

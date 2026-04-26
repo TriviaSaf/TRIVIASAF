@@ -1,0 +1,737 @@
+{% extends "base.html" %}
+
+{% block title %}Reportar Falha{% endblock %}
+
+{% block toolbar_nav %}
+<a href="/minhas-safs" class="nav-tab">Minhas SAFs</a>
+<a href="/nova-saf"   class="nav-tab active">Nova SAF</a>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+
+  <div class="page-header">
+    <div>
+      <p class="page-title">Reportar uma Falha</p>
+    </div>
+  </div>
+
+  <form id="form-nova-saf" novalidate>
+
+    <!-- Campos t&eacute;cnicos ocultos — preenchidos automaticamente pela sele&ccedil;&atilde;o -->
+    <input type="hidden" id="local_instalacao_id" name="local_instalacao_id">
+    <input type="hidden" id="equipamento_id"      name="equipamento_id">
+    <input type="hidden" id="sintoma_id"           name="sintoma_id">
+    <input type="hidden" id="titulo_falha"         name="titulo_falha">
+    <input type="hidden" id="prioridade"           name="prioridade" value="">
+    <input type="hidden" id="foto_lat"             name="foto_lat">
+    <input type="hidden" id="foto_lng"             name="foto_lng">
+    <input type="hidden" id="foto_acc"             name="foto_acc">
+
+    <!-- ① O QUE ESTÁ ACONTECENDO? -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <span class="section-num">1</span> O que est&aacute; acontecendo?
+      </div>
+
+      <div class="form-group">
+        <textarea id="descricao_falha" name="descricao_falha"
+                  class="form-control" rows="3" required
+                  placeholder="Ex: A bomba de &aacute;gua do po&ccedil;o n&ordm; 2 parou de funcionar e est&aacute; fazendo ru&iacute;do desde ontem..."></textarea>
+        <span class="form-hint" style="display:block;margin-top:.3rem;">
+          Mencione o local e o que observou. O sistema identificar&aacute; o equipamento automaticamente.
+        </span>
+        <span class="form-error">Campo obrigat&oacute;rio.</span>
+      </div>
+
+      <!-- Cards de sugest&atilde;o (aparecem ao digitar) -->
+      <div id="suggest-area" style="display:none;margin-top:.875rem;">
+        <p style="font-size:.8rem;font-weight:700;color:var(--primary);margin-bottom:.5rem;">
+          &#128204; O sistema identificou os seguintes equipamentos &mdash; selecione o correto:
+        </p>
+        <p id="suggest-loading" style="display:none;font-size:.82rem;color:var(--text-muted);padding:.4rem 0;">
+          &#128269; Buscando...
+        </p>
+        <div id="suggest-list" style="display:flex;flex-direction:column;gap:.45rem;"></div>
+        <p id="suggest-empty"   style="display:none;font-size:.82rem;color:var(--text-muted);padding:.4rem 0;">
+          Nenhum resultado. Use &ldquo;Especificar manualmente&rdquo; abaixo.
+        </p>
+      </div>
+
+      <!-- Card do equipamento selecionado -->
+      <div id="selected-card" style="display:none;margin-top:.875rem;">
+        <div style="border:2px solid var(--green);border-radius:var(--radius-lg);
+                    background:rgba(42,110,66,.07);padding:.875rem 1.125rem;
+                    display:flex;align-items:flex-start;gap:.875rem;">
+          <span style="font-size:1.55rem;flex-shrink:0;line-height:1;margin-top:2px;">&#9989;</span>
+          <div style="flex:1;min-width:0;">
+            <div id="sel-equip" style="font-weight:700;color:var(--text);font-size:.95rem;line-height:1.3;"></div>
+            <div id="sel-local" style="font-size:.8rem;color:var(--text-muted);margin-top:3px;"></div>
+            <div id="sel-sintoma" style="display:none;font-size:.82rem;color:var(--primary);
+                                         margin-top:5px;font-weight:600;"></div>
+          </div>
+          <button type="button" id="btn-change-equip"
+                  class="btn btn-ghost btn-sm"
+                  style="flex-shrink:0;font-size:.75rem;color:var(--primary);">Trocar</button>
+        </div>
+      </div>
+
+      <!-- Voltar / Especificar manualmente (accordion) -->
+      <div style="margin-top:.875rem;">
+        <button type="button" id="btn-toggle-manual"
+                class="btn btn-ghost btn-sm"
+                style="font-size:.78rem;color:var(--text-muted);padding:.2rem 0;
+                       display:inline-flex;align-items:center;gap:5px;">
+          <span id="manual-icon"
+                style="display:inline-block;transition:transform .2s;">&#9654;</span>
+          N&atilde;o encontrou? Especifique manualmente
+        </button>
+        <div id="manual-section"
+             style="display:none;margin-top:.75rem;padding:1rem;
+                    background:var(--surface);border:1px solid var(--border);
+                    border-radius:var(--radius-lg);">
+          <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:.875rem;">
+            Selecione o local, equipamento e sintoma diretamente:
+          </p>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" for="man-local">Local de Instala&ccedil;&atilde;o</label>
+              <select id="man-local" class="form-control">
+                <option value="">Carregando...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="man-equip">Equipamento</label>
+              <select id="man-equip" class="form-control" disabled>
+                <option value="">Selecione o local primeiro</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="man-sintoma">
+              Sintoma / Dano
+              <span style="font-weight:400;color:var(--text-muted);font-size:.78rem;">(opcional)</span>
+            </label>
+            <select id="man-sintoma" class="form-control" disabled>
+              <option value="">Selecione o equipamento primeiro</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <span class="form-error" id="equip-error" style="display:none;margin-top:.5rem;">
+        Identifique o equipamento pela busca ou pelo seletor manual.
+      </span>
+    </div>
+
+    <!-- ② QUANDO E QUAL O IMPACTO? -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <span class="section-num">2</span> Quando e qual o impacto?
+      </div>
+
+      <div class="form-grid" style="margin-bottom:1.25rem;">
+        <div class="form-group">
+          <label class="form-label" for="data_inicio_avaria">
+            Data de in&iacute;cio&nbsp;<span class="required">*</span>
+          </label>
+          <input type="date" id="data_inicio_avaria" name="data_inicio_avaria"
+                 class="form-control" required>
+          <span class="form-error">Campo obrigat&oacute;rio.</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="hora_inicio_avaria">
+            Hora de in&iacute;cio&nbsp;<span class="required">*</span>
+          </label>
+          <input type="time" id="hora_inicio_avaria" name="hora_inicio_avaria"
+                 class="form-control" required>
+          <span class="form-error">Campo obrigat&oacute;rio.</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">
+          Qual o impacto agora?&nbsp;<span class="required">*</span>
+        </label>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.625rem;margin-top:.375rem;">
+
+          <button type="button" class="urgency-btn" data-prio="MEDIA"
+                  style="border:2px solid var(--border);border-radius:var(--radius-lg);
+                         background:var(--surface);padding:.875rem .375rem;
+                         display:flex;flex-direction:column;align-items:center;gap:.375rem;
+                         cursor:pointer;text-align:center;transition:all .15s;">
+            <span style="font-size:1.5rem;line-height:1;">&#9888;&#65039;</span>
+            <span style="font-weight:700;font-size:.82rem;color:var(--text);line-height:1.25;">
+              Funciona<br>com limite
+            </span>
+            <span style="font-size:.7rem;color:var(--text-muted);">Pode aguardar</span>
+          </button>
+
+          <button type="button" class="urgency-btn" data-prio="ALTA"
+                  style="border:2px solid var(--border);border-radius:var(--radius-lg);
+                         background:var(--surface);padding:.875rem .375rem;
+                         display:flex;flex-direction:column;align-items:center;gap:.375rem;
+                         cursor:pointer;text-align:center;transition:all .15s;">
+            <span style="font-size:1.5rem;line-height:1;">&#128310;</span>
+            <span style="font-weight:700;font-size:.82rem;color:var(--text);line-height:1.25;">
+              Afeta a<br>opera&ccedil;&atilde;o
+            </span>
+            <span style="font-size:.7rem;color:var(--text-muted);">Aten&ccedil;&atilde;o necess&aacute;ria</span>
+          </button>
+
+          <button type="button" class="urgency-btn" data-prio="CRITICA"
+                  style="border:2px solid var(--border);border-radius:var(--radius-lg);
+                         background:var(--surface);padding:.875rem .375rem;
+                         display:flex;flex-direction:column;align-items:center;gap:.375rem;
+                         cursor:pointer;text-align:center;transition:all .15s;">
+            <span style="font-size:1.5rem;line-height:1;">&#128680;</span>
+            <span style="font-weight:700;font-size:.82rem;color:var(--text);line-height:1.25;">
+              Parado ou<br>cr&iacute;tico
+            </span>
+            <span style="font-size:.7rem;color:var(--text-muted);">Urgente!</span>
+          </button>
+
+        </div>
+        <span class="form-error" id="prio-error" style="display:none;margin-top:.375rem;">
+          Selecione o impacto atual.
+        </span>
+      </div>
+    </div>
+
+    <!-- ③ FOTO DO PROBLEMA (obrigatória) -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <span class="section-num">3</span> Foto do Problema
+        <span class="required" style="font-size:.75rem;font-weight:700;">*</span>
+        <span style="font-size:.73rem;font-weight:400;color:var(--text-muted);margin-left:4px;">(obrigat&oacute;ria)</span>
+      </div>
+
+      <!-- Estado: sem foto -->
+      <div id="cam-no-photo">
+        <div style="text-align:center;padding:2rem 1.25rem;border:2px dashed var(--border);
+                    border-radius:var(--radius-lg);background:var(--surface);">
+          <div style="font-size:3rem;margin-bottom:.75rem;opacity:.6;">&#128247;</div>
+          <p style="font-size:.9rem;color:var(--text);font-weight:600;margin-bottom:.3rem;">
+            Foto do equipamento ou local com a falha
+          </p>
+          <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:1.25rem;">
+            A foto &eacute; <strong>obrigat&oacute;ria</strong>. A localiza&ccedil;&atilde;o GPS ser&aacute; registrada automaticamente.
+          </p>
+          <button type="button" id="btn-open-camera" class="btn btn-primary btn-lg">
+            &#128247;&nbsp; Abrir C&acirc;mera
+          </button>
+          <p style="font-size:.74rem;color:var(--text-light);margin-top:.75rem;">
+            Um guia aparecer&aacute; para centralizar o equipamento.
+          </p>
+        </div>
+      </div>
+
+      <!-- Estado: foto capturada -->
+      <div id="cam-photo-result" class="hidden">
+        <div style="position:relative;border:1px solid var(--border);
+                    border-radius:var(--radius-lg);overflow:hidden;max-height:300px;background:#000;">
+          <img id="cam-photo-preview" src="" alt="Foto capturada"
+               style="width:100%;max-height:300px;object-fit:contain;display:block;">
+          <div style="position:absolute;bottom:0;left:0;right:0;
+                      background:linear-gradient(transparent,rgba(0,0,0,.75));padding:.75rem 1rem;">
+            <div id="geo-status" style="display:none;align-items:center;gap:6px;
+                                        color:#fff;font-size:.78rem;font-weight:600;">
+              <span>&#128205;</span><span id="geo-coords"></span>
+            </div>
+            <div id="geo-error" style="display:none;color:rgba(255,255,255,.65);font-size:.75rem;">
+              &#8505;&#65039; GPS n&atilde;o dispon&iacute;vel &mdash; foto salva sem coordenadas
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:.5rem;margin-top:.625rem;justify-content:flex-end;align-items:center;">
+          <span style="font-size:.78rem;color:var(--green);font-weight:600;">&#10003; Foto capturada</span>
+          <button type="button" id="btn-retake" class="btn btn-outline btn-sm">
+            &#8635; Tirar Novamente
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SUBMIT -->
+    <div style="display:flex;gap:.75rem;justify-content:flex-end;padding:1rem 0 .5rem;">
+      <a href="/minhas-safs" class="btn btn-outline">Cancelar</a>
+      <button type="submit" id="btn-submit" class="btn btn-accent btn-lg" disabled>
+        Enviar Solicita&ccedil;&atilde;o
+      </button>
+    </div>
+
+  </form>
+</div>
+
+
+
+<!-- ============================================================
+     CAMERA OVERLAY (full-screen, opens via button)
+     - Rear camera preferred (facingMode: environment)
+     - No gallery access
+     - Orange corner guide for equipment framing
+     ============================================================ -->
+<div id="camera-overlay"
+     style="display:none;position:fixed;inset:0;background:#000;
+            z-index:9990;flex-direction:column;overflow:hidden;">
+
+  <!-- Live video area -->
+  <div style="position:relative;flex:1;">
+    <video id="cam-video" autoplay playsinline muted
+           style="width:100%;height:100%;object-fit:cover;"></video>
+
+    <!-- Framing guide: box-shadow darkens area OUTSIDE the orange square -->
+    <div id="cam-guide"
+         style="position:absolute;
+                top:50%;left:50%;
+                transform:translate(-50%, -50%);
+                width:min(35vw, 52vh);
+                height:min(35vw, 52vh);
+                box-shadow:0 0 0 9999px rgba(0,0,0,0.58);
+                border-radius:5px;
+                pointer-events:none;">
+
+      <!-- Corner marks (brand orange) -->
+      <div style="position:absolute;top:-2px;left:-2px;width:30px;height:30px;
+                  border-top:3px solid var(--accent);border-left:3px solid var(--accent);
+                  border-radius:4px 0 0 0;"></div>
+      <div style="position:absolute;top:-2px;right:-2px;width:30px;height:30px;
+                  border-top:3px solid var(--accent);border-right:3px solid var(--accent);
+                  border-radius:0 4px 0 0;"></div>
+      <div style="position:absolute;bottom:-2px;left:-2px;width:30px;height:30px;
+                  border-bottom:3px solid var(--accent);border-left:3px solid var(--accent);
+                  border-radius:0 0 0 4px;"></div>
+      <div style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;
+                  border-bottom:3px solid var(--accent);border-right:3px solid var(--accent);
+                  border-radius:0 0 4px 0;"></div>
+
+      <!-- Instruction below the square -->
+      <div style="position:absolute;bottom:-44px;left:50%;transform:translateX(-50%);
+                  white-space:nowrap;color:#fff;font-size:.8rem;font-weight:700;
+                  text-shadow:0 1px 6px rgba(0,0,0,1);letter-spacing:.04em;">
+        Encaixe o equipamento dentro do quadro
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls bar -->
+  <div style="background:#111;padding:1rem 2rem;display:flex;align-items:center;
+              justify-content:space-between;flex-shrink:0;">
+
+    <!-- Close -->
+    <button id="btn-close-cam" type="button"
+            style="width:50px;height:50px;border-radius:50%;
+                   background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.3);
+                   color:#fff;font-size:1.3rem;cursor:pointer;
+                   display:flex;align-items:center;justify-content:center;">&#x2715;</button>
+
+    <!-- Capture (big circular shutter) -->
+    <button id="btn-capture" type="button"
+            style="width:74px;height:74px;border-radius:50%;
+                   background:#fff;border:5px solid rgba(255,255,255,.35);
+                   cursor:pointer;display:flex;align-items:center;justify-content:center;">
+      <div style="width:54px;height:54px;border-radius:50%;background:var(--accent);"></div>
+    </button>
+
+    <!-- Spacer -->
+    <div style="width:50px;"></div>
+  </div>
+
+  <!-- Off-screen canvas for frame capture -->
+  <canvas id="cam-canvas" style="display:none;"></canvas>
+</div>
+{% endblock %}
+
+{% block page_script %}
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  const user = Auth.requireAuth(['SOLICITANTE']);
+  if (!user) return;
+
+  // Default date/time = now
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('data_inicio_avaria').value =
+    `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  document.getElementById('hora_inicio_avaria').value =
+    `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+  // ── State ─────────────────────────────────────────
+  window._capturedPhoto = null;
+  let _camStream    = null;
+  let _sugestaoSel  = null;   // selected suggestion object { equip_id, equip_nome, local_id, local_nome, sintoma_id, sintoma_nome }
+  let _suggestTimer = null;
+  const btnSubmit  = document.getElementById('btn-submit');
+  const prioHidden = document.getElementById('prioridade');
+
+  // ── Validation ────────────────────────────────────
+  function checkFormValid() {
+    const hasDesc  = (document.getElementById('descricao_falha').value || '').trim().length >= 3;
+    const hasEquip = (document.getElementById('equipamento_id').value  || '') !== '';
+    const hasPrio  = prioHidden.value !== '';
+    const hasDate  = document.getElementById('data_inicio_avaria').value !== ''
+                  && document.getElementById('hora_inicio_avaria').value !== '';
+    const hasPhoto = !!window._capturedPhoto;
+    btnSubmit.disabled = !(hasDesc && hasEquip && hasPrio && hasDate && hasPhoto);
+  }
+
+  // ── Urgency buttons ───────────────────────────────
+  const PRIO_STYLE = {
+    MEDIA:   { border: '#E85C11', bg: 'rgba(232,92,17,.09)'  },
+    ALTA:    { border: '#d97706', bg: 'rgba(217,119,6,.09)'  },
+    CRITICA: { border: '#dc2626', bg: 'rgba(220,38,38,.09)'  },
+  };
+  document.querySelectorAll('.urgency-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.urgency-btn').forEach(b => {
+        b.style.borderColor = 'var(--border)';
+        b.style.background  = 'var(--surface)';
+        b.style.boxShadow   = 'none';
+      });
+      const prio  = this.dataset.prio;
+      const c     = PRIO_STYLE[prio];
+      prioHidden.value       = prio;
+      this.style.borderColor = c.border;
+      this.style.background  = c.bg;
+      this.style.boxShadow   = `0 0 0 3px ${c.border}33`;
+      document.getElementById('prio-error').style.display = 'none';
+      checkFormValid();
+    });
+  });
+
+  ['data_inicio_avaria', 'hora_inicio_avaria'].forEach(id =>
+    document.getElementById(id).addEventListener('change', checkFormValid)
+  );
+
+  // ── Smart suggestion search ───────────────────────
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderSugestoes(list) {
+    const listEl    = document.getElementById('suggest-list');
+    const emptyEl   = document.getElementById('suggest-empty');
+    const loadingEl = document.getElementById('suggest-loading');
+    loadingEl.style.display = 'none';
+    listEl.innerHTML = '';
+    if (!list.length) { emptyEl.style.display = 'block'; return; }
+    emptyEl.style.display = 'none';
+
+    list.forEach(s => {
+      const btn  = document.createElement('button');
+      btn.type   = 'button';
+      btn.style.cssText = [
+        'width:100%;text-align:left;cursor:pointer;display:flex;align-items:center;gap:.875rem;',
+        'border:1.5px solid var(--border);border-radius:var(--radius-lg);',
+        'background:var(--surface);padding:.75rem 1rem;transition:border-color .15s,background .15s;'
+      ].join('');
+      const icon = s.tipo === 'sintoma' ? '\uD83D\uDCA1' : '\uD83D\uDD27';
+      btn.innerHTML = `
+        <span style="font-size:1.4rem;flex-shrink:0;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:.9rem;color:var(--text);">
+            ${escHtml(s.equip_nome || s.sintoma_nome || '')}
+          </div>
+          ${s.local_nome
+            ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:2px;">&#128205; ${escHtml(s.local_nome)}</div>`
+            : ''}
+          ${(s.sintoma_nome && s.tipo !== 'sintoma')
+            ? `<div style="font-size:.78rem;color:var(--primary);margin-top:2px;font-weight:600;">Sintoma: ${escHtml(s.sintoma_nome)}</div>`
+            : ''}
+        </div>
+        <span style="color:var(--primary);font-size:1.1rem;flex-shrink:0;">&#8594;</span>
+      `;
+      btn.addEventListener('mouseenter', () => { btn.style.borderColor='var(--primary)'; btn.style.background='rgba(27,42,94,.04)'; });
+      btn.addEventListener('mouseleave', () => { btn.style.borderColor='var(--border)';  btn.style.background='var(--surface)'; });
+      btn.addEventListener('click', () => selecionarSugestao(s));
+      listEl.appendChild(btn);
+    });
+  }
+
+  function selecionarSugestao(s) {
+    _sugestaoSel = s;
+    document.getElementById('local_instalacao_id').value = s.local_id   || '';
+    document.getElementById('equipamento_id').value      = s.equip_id   || '';
+    document.getElementById('sintoma_id').value          = s.sintoma_id || '';
+
+    document.getElementById('sel-equip').textContent = s.equip_nome || s.sintoma_nome || '';
+    document.getElementById('sel-local').textContent = s.local_nome ? `\uD83D\uDCCD ${s.local_nome}` : '';
+    const sinDiv = document.getElementById('sel-sintoma');
+    if (s.sintoma_nome && s.tipo !== 'sintoma') {
+      sinDiv.textContent = `\uD83D\uDCA1 ${s.sintoma_nome}`;
+      sinDiv.style.display = 'block';
+    } else { sinDiv.style.display = 'none'; }
+
+    document.getElementById('suggest-area').style.display  = 'none';
+    document.getElementById('selected-card').style.display = 'block';
+    document.getElementById('equip-error').style.display   = 'none';
+    checkFormValid();
+  }
+
+  function limparSelecao() {
+    _sugestaoSel = null;
+    document.getElementById('local_instalacao_id').value = '';
+    document.getElementById('equipamento_id').value      = '';
+    document.getElementById('sintoma_id').value          = '';
+    document.getElementById('selected-card').style.display = 'none';
+    const list = document.getElementById('suggest-list');
+    if (list.children.length) document.getElementById('suggest-area').style.display = 'block';
+    checkFormValid();
+  }
+  document.getElementById('btn-change-equip').addEventListener('click', limparSelecao);
+
+  // Debounced search as user types the description
+  document.getElementById('descricao_falha').addEventListener('input', function () {
+    checkFormValid();
+    if (_sugestaoSel) return; // already confirmed
+    clearTimeout(_suggestTimer);
+    const q = this.value.trim();
+    if (q.length < 3) {
+      document.getElementById('suggest-area').style.display = 'none';
+      return;
+    }
+    document.getElementById('suggest-loading').style.display = 'block';
+    document.getElementById('suggest-list').innerHTML = '';
+    document.getElementById('suggest-empty').style.display  = 'none';
+    document.getElementById('suggest-area').style.display   = 'block';
+    _suggestTimer = setTimeout(async () => {
+      const res = await API.sugerir(q);
+      if (res.ok && res.data.sugestoes) {
+        renderSugestoes(res.data.sugestoes);
+      } else {
+        document.getElementById('suggest-loading').style.display = 'none';
+        document.getElementById('suggest-empty').style.display   = 'block';
+      }
+    }, 480);
+  });
+
+  // ── Manual accordion ─────────────────────────────
+  let manualOpen   = false;
+  let manualLoaded = false;
+
+  document.getElementById('btn-toggle-manual').addEventListener('click', async function () {
+    manualOpen = !manualOpen;
+    document.getElementById('manual-section').style.display = manualOpen ? 'block' : 'none';
+    document.getElementById('manual-icon').style.transform  = manualOpen ? 'rotate(90deg)' : '';
+
+    if (manualOpen && !manualLoaded) {
+      manualLoaded = true;
+      const res = await API.locais();
+      const sel = document.getElementById('man-local');
+      if (res.ok && res.data.locais?.length) {
+        sel.innerHTML = '<option value="">Selecione o local</option>' +
+          res.data.locais.map(l =>
+            `<option value="${l.id}">${l.codigo ? escHtml(l.codigo) + ' \u2013 ' : ''}${escHtml(l.descricao)}</option>`
+          ).join('');
+      } else {
+        sel.innerHTML = '<option value="">Nenhum local dispon\xedvel</option>';
+      }
+    }
+  });
+
+  document.getElementById('man-local').addEventListener('change', async function () {
+    const lid    = this.value;
+    const eqSel  = document.getElementById('man-equip');
+    const sinSel = document.getElementById('man-sintoma');
+    eqSel.innerHTML   = '<option value="">Carregando...</option>';
+    eqSel.disabled    = true;
+    sinSel.innerHTML  = '<option value="">Selecione o equipamento primeiro</option>';
+    sinSel.disabled   = true;
+    _sugestaoSel      = null;
+    document.getElementById('selected-card').style.display = 'none';
+    document.getElementById('local_instalacao_id').value   = lid;
+    document.getElementById('equipamento_id').value        = '';
+    document.getElementById('sintoma_id').value            = '';
+    if (!lid) { eqSel.innerHTML = '<option value="">Selecione o local primeiro</option>'; checkFormValid(); return; }
+    const res = await API.equipamentos(lid);
+    if (res.ok && res.data.equipamentos?.length) {
+      eqSel.innerHTML = '<option value="">Selecione o equipamento</option>' +
+        res.data.equipamentos.map(e =>
+          `<option value="${e.id}">${e.codigo ? escHtml(e.codigo) + ' \u2013 ' : ''}${escHtml(e.descricao)}</option>`
+        ).join('');
+      eqSel.disabled = false;
+    } else {
+      eqSel.innerHTML = '<option value="">Nenhum equipamento encontrado</option>';
+    }
+    checkFormValid();
+  });
+
+  document.getElementById('man-equip').addEventListener('change', async function () {
+    const eid    = this.value;
+    const sinSel = document.getElementById('man-sintoma');
+    document.getElementById('equipamento_id').value = eid;
+    _sugestaoSel = null;
+    document.getElementById('selected-card').style.display = 'none';
+    sinSel.innerHTML = '<option value="">Carregando...</option>';
+    sinSel.disabled  = true;
+    if (!eid) { sinSel.innerHTML = '<option value="">Selecione o equipamento primeiro</option>'; checkFormValid(); return; }
+    const res = await API.sintomas(eid);
+    if (res.ok && res.data.sintomas?.length) {
+      sinSel.innerHTML = '<option value="">Sintoma / Dano (opcional)</option>' +
+        res.data.sintomas.map(s =>
+          `<option value="${s.id}">${s.codigo ? escHtml(s.codigo) + ' \u2013 ' : ''}${escHtml(s.descricao)}</option>`
+        ).join('');
+      sinSel.disabled = false;
+    } else {
+      sinSel.innerHTML = '<option value="">Nenhum sintoma encontrado</option>';
+      sinSel.disabled  = false;
+    }
+    checkFormValid();
+  });
+
+  document.getElementById('man-sintoma').addEventListener('change', function () {
+    document.getElementById('sintoma_id').value = this.value;
+    checkFormValid();
+  });
+
+  // ── Camera ────────────────────────────────────────
+  async function openCamera() {
+    const overlay = document.getElementById('camera-overlay');
+    const video   = document.getElementById('cam-video');
+    overlay.style.display = 'flex';
+    try {
+      _camStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+    } catch (_err) {
+      try {
+        _camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      } catch (_err2) {
+        overlay.style.display = 'none';
+        Toast.error('C\xe2mera n\xe3o dispon\xedvel. Verifique as permiss\xf5es do navegador.');
+        return;
+      }
+    }
+    document.getElementById('cam-video').srcObject = _camStream;
+  }
+
+  function closeCamera() {
+    document.getElementById('camera-overlay').style.display = 'none';
+    if (_camStream) { _camStream.getTracks().forEach(t => t.stop()); _camStream = null; }
+    document.getElementById('cam-video').srcObject = null;
+  }
+
+  async function capturePhoto() {
+    const video  = document.getElementById('cam-video');
+    const canvas = document.getElementById('cam-canvas');
+    canvas.width  = video.videoWidth  || 1280;
+    canvas.height = video.videoHeight || 720;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+
+    let gps = null;
+    try {
+      const pos = await Permissions.getCurrentPosition({ timeout: 7000, maximumAge: 15000 });
+      gps = {
+        lat: pos.coords.latitude.toFixed(6),
+        lng: pos.coords.longitude.toFixed(6),
+        acc: Math.round(pos.coords.accuracy)
+      };
+    } catch (_) { /* GPS opcional */ }
+
+    window._capturedPhoto = { dataUrl, gps };
+    document.getElementById('foto_lat').value = gps ? gps.lat : '';
+    document.getElementById('foto_lng').value = gps ? gps.lng : '';
+    document.getElementById('foto_acc').value = gps ? gps.acc : '';
+
+    document.getElementById('cam-photo-preview').src = dataUrl;
+    document.getElementById('cam-no-photo').classList.add('hidden');
+    document.getElementById('cam-photo-result').classList.remove('hidden');
+
+    const geoStatus = document.getElementById('geo-status');
+    const geoCoords = document.getElementById('geo-coords');
+    const geoError  = document.getElementById('geo-error');
+    if (gps) {
+      geoCoords.textContent = `Lat ${gps.lat}, Lng ${gps.lng}  (\xb1${gps.acc}m)`;
+      geoStatus.style.display = 'flex';
+      geoError.style.display  = 'none';
+    } else {
+      geoStatus.style.display = 'none';
+      geoError.style.display  = 'block';
+    }
+    closeCamera();
+    checkFormValid();
+  }
+
+  document.getElementById('btn-open-camera').addEventListener('click', openCamera);
+  document.getElementById('btn-close-cam').addEventListener('click',  closeCamera);
+  document.getElementById('btn-capture').addEventListener('click',     capturePhoto);
+  document.getElementById('btn-retake').addEventListener('click', function () {
+    window._capturedPhoto = null;
+    ['foto_lat','foto_lng','foto_acc'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('cam-no-photo').classList.remove('hidden');
+    document.getElementById('cam-photo-result').classList.add('hidden');
+    checkFormValid();
+  });
+
+  // ── Submit ────────────────────────────────────────
+  document.getElementById('form-nova-saf').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const descricao = (document.getElementById('descricao_falha').value || '').trim();
+    const equipId   = document.getElementById('equipamento_id').value;
+    const prio      = prioHidden.value;
+
+    if (!descricao) { Toast.warning('Descreva o problema antes de enviar.'); return; }
+    if (!equipId) {
+      document.getElementById('equip-error').style.display = 'block';
+      Toast.warning('Identifique o equipamento pela busca ou pelo seletor manual.');
+      return;
+    }
+    if (!prio) {
+      document.getElementById('prio-error').style.display = 'block';
+      Toast.warning('Selecione o impacto atual.');
+      return;
+    }
+    if (!window._capturedPhoto) {
+      Toast.warning('Tire uma foto do equipamento antes de enviar.');
+      document.getElementById('btn-open-camera').focus();
+      return;
+    }
+
+    // Auto-generate titulo_falha (max 40 chars)
+    let titulo = '';
+    if (_sugestaoSel) {
+      const parts = [_sugestaoSel.sintoma_nome, _sugestaoSel.equip_nome].filter(Boolean);
+      titulo = parts.join(' \u2014 ').substring(0, 40);
+    }
+    if (!titulo) titulo = descricao.substring(0, 40);
+    document.getElementById('titulo_falha').value = titulo;
+
+    setLoading(btnSubmit, true, 'Enviando...');
+
+    const payload = {
+      notificador_id:     user.id,
+      notificador_nome:   user.nome  || '',
+      notificador_area:   user.area  || '',
+      titulo_falha:       titulo,
+      descricao_longa:    descricao,
+      local_instalacao:   document.getElementById('local_instalacao_id').value,
+      equipamento:        equipId,
+      sintoma_id:         document.getElementById('sintoma_id').value || null,
+      prioridade:         prio,
+      data_inicio_avaria: document.getElementById('data_inicio_avaria').value,
+      hora_inicio_avaria: document.getElementById('hora_inicio_avaria').value,
+      foto_base64:        window._capturedPhoto.dataUrl,
+      foto_lat:           document.getElementById('foto_lat').value || null,
+      foto_lng:           document.getElementById('foto_lng').value || null,
+      foto_acc:           document.getElementById('foto_acc').value || null,
+    };
+
+    const res = await API.criarSaf(payload);
+    setLoading(btnSubmit, false, 'Enviar Solicita\xe7\xe3o');
+
+    if (res.ok) {
+      Toast.success(`${res.data.ticket || 'SAF'} criada com sucesso! Aguarde an\xe1lise do CCM.`);
+      setTimeout(() => window.location.href = '/minhas-safs', 1800);
+    } else {
+      Toast.error(res.data.erro || 'Erro ao criar SAF. Tente novamente.');
+    }
+  });
+});
+</script>
+{% endblock %}

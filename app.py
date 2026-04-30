@@ -63,6 +63,11 @@ def editar_saf(saf_id):
 def fila_ccm():
     return render_template('fila_ccm.html')
 
+# SIC
+@app.route('/chamados-sic')
+def chamados_sic():
+    return render_template('chamados_sic.html')
+
 @app.route('/avaliar-saf/<saf_id>')
 def avaliar_saf(saf_id):
     return render_template('avaliar_saf.html')
@@ -86,5 +91,5 @@ def acesso_negado():
     return render_template('login.html'), 403
 
 if __name__ == "__main__":
-    # debug=True é excelente para desenvolvimento (reinicia ao salvar)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    debug_mode = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes")
+    app.run(host="0.0.0.0", port=5000, debug=debug_mode)
